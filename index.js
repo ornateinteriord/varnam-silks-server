@@ -169,6 +169,22 @@ app.get("/cors-test", (_req, res) => {
 // ======================================================
 //        📌 API ROUTES
 // ======================================================
+
+// Middleware to ensure DB connection for Vercel serverless (must be before routes)
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("DB Connection Error in middleware:", error.message);
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+      error: error.message
+    });
+  }
+});
+
 app.use("/auth", AuthRoutes);
 app.use("/admin", AdminRoutes);
 app.use("/agent", AgentRoutes);
@@ -212,7 +228,7 @@ app.use((err, req, res, next) => {
 // ======================================================
 const PORT = process.env.PORT || 5051;
 
-// Connect to database before starting server
+// Connect to database before starting server (for local development)
 const startServer = async () => {
   try {
     // Ensure MongoDB is connected before accepting requests
@@ -228,7 +244,7 @@ const startServer = async () => {
 };
 
 // Start server only if not in Vercel serverless environment
-if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+if (!process.env.VERCEL) {
   startServer();
 }
 
