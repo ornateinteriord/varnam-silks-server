@@ -170,6 +170,32 @@ exports.createPaymentOrder = async (req, res) => {
 
         const orderId = `ORDER_${Date.now()}`;
 
+        // Fetch account details if account_id is provided
+        let accountNumber = `WALLET-${member_id}`; // Default fallback
+        let accountType = 'Wallet'; // Default fallback
+
+        if (account_id) {
+            const AccountsModel = require("../../models/accounts.model");
+            const AccountGroupModel = require("../../models/accountGroup.model");
+
+            const account = await AccountsModel.findOne({ account_id: account_id });
+
+            if (account) {
+                accountNumber = account.account_no;
+
+                // Fetch account type name from accountGroup
+                if (account.account_type) {
+                    const accountGroup = await AccountGroupModel.findOne({
+                        account_group_id: account.account_type
+                    });
+
+                    if (accountGroup && accountGroup.account_group_name) {
+                        accountType = accountGroup.account_group_name;
+                    }
+                }
+            }
+        }
+
         // Prepare Request
         const request = {
             order_amount: Number(amount),

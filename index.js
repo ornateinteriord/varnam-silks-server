@@ -9,6 +9,7 @@ const connectDB = require("./models/db"); // Updated import
 const AuthRoutes = require("./routes/AuthRoutes");
 const AdminRoutes = require("./routes/AdminRoute");
 const AgentRoutes = require("./routes/AgentRoute");
+const UserRoutes = require("./routes/UserRoute");
 const MemberRoutes = require("./routes/MemberRoute");
 const TransactionRoutes = require("./routes/TransactionRoute");
 const ReceiptsRoutes = require("./routes/ReceiptsRoute");
@@ -93,6 +94,7 @@ app.get("/image-kit-auth", (_req, res) => {
 app.use("/auth", AuthRoutes);
 app.use("/admin", AdminRoutes);
 app.use("/agent", AgentRoutes);
+app.use("/user", UserRoutes);
 app.use("/member", MemberRoutes);
 app.use("/transaction", TransactionRoutes);
 app.use("/banking", ReceiptsRoutes);
