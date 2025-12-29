@@ -110,13 +110,39 @@ exports.getAllTransactions = async (req, res) => {
 // 1. Create Payment Order
 exports.createPaymentOrder = async (req, res) => {
     try {
-        const { member_id, amount, mobileno, Name, email } = req.body;
+        const { member_id, amount, mobileno, Name, email, account_id } = req.body;
 
         if (!member_id || !amount || !mobileno || !Name) {
             return res.status(400).json({ success: false, message: "Missing required fields" });
         }
 
         const orderId = `ORDER_${Date.now()}`;
+
+        // Fetch account details if account_id is provided
+        let accountNumber = `WALLET-${member_id}`; // Default fallback
+        let accountType = 'Wallet'; // Default fallback
+
+        if (account_id) {
+            const AccountsModel = require("../../models/accounts.model");
+            const AccountGroupModel = require("../../models/accountGroup.model");
+
+            const account = await AccountsModel.findOne({ account_id: account_id });
+
+            if (account) {
+                accountNumber = account.account_no;
+
+                // Fetch account type name from accountGroup
+                if (account.account_type) {
+                    const accountGroup = await AccountGroupModel.findOne({
+                        account_group_id: account.account_type
+                    });
+
+                    if (accountGroup && accountGroup.account_group_name) {
+                        accountType = accountGroup.account_group_name;
+                    }
+                }
+            }
+        }
 
         // Prepare Request
         const request = {
@@ -142,6 +168,8 @@ exports.createPaymentOrder = async (req, res) => {
             transaction_id: orderId, // Use Order ID as Transaction ID for mapping
             transaction_date: new Date(),
             member_id,
+            account_number: accountNumber,
+            account_type: accountType,
             transaction_type: "Money Added",
             description: "Online Wallet Top-up (Pending)",
             credit: Number(amount),

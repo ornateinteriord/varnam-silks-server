@@ -2,6 +2,7 @@ const AccountsModel = require("../../../models/accounts.model");
 const InterestModel = require("../../../models/interest.model");
 const AccountGroupModel = require("../../../models/accountGroup.model");
 const AccountBookModel = require("../../../models/accountBook.model");
+const MemberModel = require("../../../models/member.model");
 
 // Get interests by account_group_id
 const getInterestsByAccountGroup = async (req, res) => {
@@ -204,10 +205,36 @@ const getAccounts = async (req, res) => {
 
         const totalAccounts = await AccountsModel.countDocuments(filter);
 
+        // Fetch member details for each account
+        const accountsWithMemberDetails = await Promise.all(
+            accounts.map(async (account) => {
+                const accountObj = account.toObject();
+
+                if (accountObj.member_id) {
+                    // Fetch member details
+                    const member = await MemberModel.findOne(
+                        { member_id: accountObj.member_id },
+                        { name: 1, contactno: 1, emailid: 1, address: 1, _id: 0 }
+                    );
+
+                    if (member) {
+                        accountObj.memberDetails = {
+                            name: member.name,
+                            contactno: member.contactno,
+                            emailid: member.emailid,
+                            address: member.address
+                        };
+                    }
+                }
+
+                return accountObj;
+            })
+        );
+
         res.status(200).json({
             success: true,
             message: "Accounts fetched successfully",
-            data: accounts,
+            data: accountsWithMemberDetails,
             pagination: {
                 total: totalAccounts,
                 page: parseInt(page),
