@@ -19,7 +19,7 @@ const CashTransactionRoutes = require("./routes/CashTransactionRoute");
 const app = express();
 
 // ======================================================
-//        🛡️ CORS CONFIG (Supports Vite + ngrok)
+//        🛡️ CORS CONFIG (Production Ready)
 // ======================================================
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -33,31 +33,46 @@ const allowedOrigins = [
 
 console.log("🔐 CORS Allowed Origins:", allowedOrigins);
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, Postman, server-to-server)
-      if (!origin) return callback(null, true);
+// CORS OPTIONS - More permissive for serverless environments
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) {
+      return callback(null, true);
+    }
 
-      const isLocalhost = /^http:\/\/localhost:\d+$/.test(origin);
-      const isNgrok = origin.endsWith("ngrok-free.dev");
+    // Check if origin is allowed
+    const isLocalhost = /^http:\/\/localhost:\d+$/.test(origin);
+    const isNgrok = origin.endsWith("ngrok-free.dev");
 
-      if (isLocalhost || isNgrok || allowedOrigins.includes(origin)) {
-        console.log(`✅ CORS ALLOWED: ${origin}`);
-        return callback(null, true);
-      }
-
+    if (isLocalhost || isNgrok || allowedOrigins.includes(origin)) {
+      console.log(`✅ CORS ALLOWED: ${origin}`);
+      callback(null, true);
+    } else {
       console.error(`❌ CORS BLOCKED: ${origin}`);
-      return callback(new Error(`CORS BLOCKED: ${origin}`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
-    exposedHeaders: ["Content-Range", "X-Content-Range"],
-  })
-);
+      // Don't throw error, just deny
+      callback(null, false);
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin"
+  ],
+  exposedHeaders: ["Content-Range", "X-Content-Range"],
+  optionsSuccessStatus: 200, // For legacy browsers
+  preflightContinue: false
+};
 
-app.options("*", cors());
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Explicit OPTIONS handler (important for preflight)
+app.options("*", cors(corsOptions));
 
 // ======================================================
 // ⚠️ IMPORTANT: RAW BODY FOR CASHFREE WEBHOOK
@@ -100,6 +115,18 @@ app.get("/image-kit-auth", (_req, res) => {
     return res.send(imagekit.getAuthenticationParameters());
   }
   return res.status(500).json({ error: "ImageKit not configured" });
+});
+
+// ======================================================
+//        🏥 CORS HEALTH CHECK
+// ======================================================
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    cors: "enabled",
+    environment: process.env.NODE_ENV || "development"
+  });
 });
 
 // ======================================================
