@@ -8,7 +8,6 @@ const generateTransactionId = () => `TXN-${Date.now()}-${Math.floor(Math.random(
 exports.getTransactions = async (req, res) => {
     try {
         const { id } = req.params; // member_id or agent_id
-        console.log("Fetching transactions for:", id);
 
         const transactions = await TransactionModel.find({ member_id: id }).sort({ createdAt: -1 });
 
@@ -109,11 +108,64 @@ exports.getAllTransactions = async (req, res) => {
 
 // 1. Create Payment Order
 exports.createPaymentOrder = async (req, res) => {
+    const AccountsModel = require("../../models/accounts.model");
+    const MemberModel = require("../../models/member.model");
+
     try {
-        const { member_id, amount, mobileno, Name, email, account_id } = req.body;
+        const { member_id, amount, mobileno, Name, email, account_id, account_no, account_type } = req.body;
 
         if (!member_id || !amount || !mobileno || !Name) {
-            return res.status(400).json({ success: false, message: "Missing required fields" });
+            return res.status(400).json({ success: false, message: "Missing required fields: member_id, amount, mobileno, Name" });
+        }
+
+        // Validate account details are provided
+        if (!account_id || !account_no || !account_type) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required account details: account_id, account_no, account_type"
+            });
+        }
+
+        // Validate member exists and is active
+        const allMembers = await MemberModel.find({});
+        const member = allMembers.find(m => m.member_id === member_id || m.member_id === parseInt(member_id));
+
+        if (!member) {
+            return res.status(404).json({
+                success: false,
+                message: "Member not found"
+            });
+        }
+
+        if (member.status !== "active") {
+            return res.status(403).json({
+                success: false,
+                message: "Member account is not active"
+            });
+        }
+
+        // Validate account exists and belongs to member
+        const allAccounts = await AccountsModel.find({});
+        const account = allAccounts.find(acc =>
+            (acc.account_id === account_id || acc.account_id === parseInt(account_id)) &&
+            (acc.member_id === member_id || acc.member_id === parseInt(member_id)) &&
+            (acc.account_no == account_no) &&
+            (acc.account_type === account_type)
+        );
+
+        if (!account) {
+            return res.status(404).json({
+                success: false,
+                message: "Account not found or does not belong to this member"
+            });
+        }
+
+        // Check if account is active
+        if (account.status !== "active") {
+            return res.status(403).json({
+                success: false,
+                message: "Account is not active. Cannot add money to inactive account."
+            });
         }
 
         const orderId = `ORDER_${Date.now()}`;
@@ -163,15 +215,15 @@ exports.createPaymentOrder = async (req, res) => {
         const response = await Cashfree.PGCreateOrder(request);
         const paymentSessionId = response.data.payment_session_id;
 
-        // Create Pending Transaction in DB
+        // Create Pending Transaction in DB with account details
         const newTx = new TransactionModel({
             transaction_id: orderId, // Use Order ID as Transaction ID for mapping
             transaction_date: new Date(),
             member_id,
-            account_number: accountNumber,
-            account_type: accountType,
+            account_number: account_no,
+            account_type: account_type,
             transaction_type: "Money Added",
-            description: "Online Wallet Top-up (Pending)",
+            description: `Online Top-up to Account ${account_no} (Pending)`,
             credit: Number(amount),
             debit: 0,
             balance: 0, // Will update on success
@@ -189,7 +241,8 @@ exports.createPaymentOrder = async (req, res) => {
         return res.status(200).json({
             success: true,
             payment_session_id: paymentSessionId,
-            order_id: orderId
+            order_id: orderId,
+            account_no: account_no
         });
 
     } catch (error) {
@@ -203,6 +256,8 @@ exports.createPaymentOrder = async (req, res) => {
 
 // 2. Webhook Handler
 exports.handleCashfreeWebhook = async (req, res) => {
+    const AccountsModel = require("../../models/accounts.model");
+
     try {
         const signature = req.headers["x-webhook-signature"];
         const timestamp = req.headers["x-webhook-timestamp"];
@@ -231,15 +286,41 @@ exports.handleCashfreeWebhook = async (req, res) => {
             // Update Transaction
             transaction.payment_status = "Success";
             transaction.status = "Completed";
-            transaction.description = "Online Wallet Top-up (Success)";
+            transaction.description = `Online Top-up to Account ${transaction.account_number} (Success)`;
             transaction.payment_data = event.data;
 
-            // Update Balance
-            const lastTx = await TransactionModel.findOne({ member_id: transaction.member_id, status: "Completed" }).sort({ createdAt: -1 });
-            const lastBalance = lastTx ? lastTx.balance : 0;
-            transaction.balance = lastBalance + transaction.credit;
+            // Update Balance - Get current account balance
+            if (transaction.account_number && transaction.account_type) {
+                // Find the account
+                const allAccounts = await AccountsModel.find({});
+                const account = allAccounts.find(acc =>
+                    (acc.member_id === transaction.member_id || acc.member_id === parseInt(transaction.member_id)) &&
+                    (acc.account_no == transaction.account_number) &&
+                    (acc.account_type === transaction.account_type)
+                );
 
-            await transaction.save(); // Save Transaction first
+                if (account) {
+                    // Credit the account balance
+                    const newAccountBalance = account.account_amount + transaction.credit;
+                    account.account_amount = newAccountBalance;
+                    await account.save();
+
+                    // Set transaction balance to the account's new balance
+                    transaction.balance = newAccountBalance;
+
+                    console.log(`Account ${account.account_no} credited with ₹${transaction.credit}. New balance: ₹${newAccountBalance}`);
+                } else {
+                    console.error(`Account not found for transaction ${orderId}`);
+                    transaction.description += " (Warning: Account not found for balance update)";
+                }
+            } else {
+                // Fallback for old transactions without account details
+                const lastTx = await TransactionModel.findOne({ member_id: transaction.member_id, status: "Completed" }).sort({ createdAt: -1 });
+                const lastBalance = lastTx ? lastTx.balance : 0;
+                transaction.balance = lastBalance + transaction.credit;
+            }
+
+            await transaction.save(); // Save Transaction
 
             // Optional: Update Member Wallet Balance in Member Table if exists
         } else if (event.type === "PAYMENT_FAILED_WEBHOOK" || event.type === "PAYMENT_USER_DROPPED_WEBHOOK") {
@@ -264,6 +345,8 @@ exports.handleCashfreeWebhook = async (req, res) => {
 
 // 3. Status Check (Polling)
 exports.checkPaymentStatus = async (req, res) => {
+    const AccountsModel = require("../../models/accounts.model");
+
     try {
         const { orderId } = req.params;
         const response = await Cashfree.PGOrderFetchPayments("2023-08-01", orderId);
@@ -274,18 +357,44 @@ exports.checkPaymentStatus = async (req, res) => {
 
         if (successPayment) {
             // Logic similar to webhook to mark success if not already done
-            // Skipping for brevity, assuming webhook handles it mostly. 
-            // But good to have a sync function here.
-
             const transaction = await TransactionModel.findOne({ transaction_id: orderId });
             if (transaction && transaction.status !== "Completed") {
                 // Mark as completed
                 transaction.payment_status = "Success";
                 transaction.status = "Completed";
+                transaction.description = `Online Top-up to Account ${transaction.account_number} (Success)`;
 
-                const lastTx = await TransactionModel.findOne({ member_id: transaction.member_id, status: "Completed" }).sort({ createdAt: -1 });
-                const lastBalance = lastTx ? lastTx.balance : 0;
-                transaction.balance = lastBalance + transaction.credit;
+                // Update account balance
+                if (transaction.account_number && transaction.account_type) {
+                    // Find the account
+                    const allAccounts = await AccountsModel.find({});
+                    const account = allAccounts.find(acc =>
+                        (acc.member_id === transaction.member_id || acc.member_id === parseInt(transaction.member_id)) &&
+                        (acc.account_no == transaction.account_number) &&
+                        (acc.account_type === transaction.account_type)
+                    );
+
+                    if (account) {
+                        // Credit the account balance
+                        const newAccountBalance = account.account_amount + transaction.credit;
+                        account.account_amount = newAccountBalance;
+                        await account.save();
+
+                        // Set transaction balance to the account's new balance
+                        transaction.balance = newAccountBalance;
+
+                        console.log(`[Status Check] Account ${account.account_no} credited with ₹${transaction.credit}. New balance: ₹${newAccountBalance}`);
+                    } else {
+                        console.error(`[Status Check] Account not found for transaction ${orderId}`);
+                        transaction.description += " (Warning: Account not found for balance update)";
+                    }
+                } else {
+                    // Fallback for old transactions without account details
+                    const lastTx = await TransactionModel.findOne({ member_id: transaction.member_id, status: "Completed" }).sort({ createdAt: -1 });
+                    const lastBalance = lastTx ? lastTx.balance : 0;
+                    transaction.balance = lastBalance + transaction.credit;
+                }
+
                 await transaction.save();
             }
             return res.status(200).json({ success: true, status: "SUCCESS" });
