@@ -23,29 +23,39 @@ const app = express();
 // ======================================================
 const allowedOrigins = [
   process.env.FRONTEND_URL,
-  "https://nidhi-ltd.vercel.app"
+  process.env.FRONTEND_URL_DEV,
+  process.env.FRONTEND_URL_PROD,
+  "https://nidhi-ltd.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:3000"
 ].filter(Boolean);
+
+console.log("🔐 CORS Allowed Origins:", allowedOrigins);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin) return callback(null, true); // Postman / server-to-server
+      // Allow requests with no origin (mobile apps, Postman, server-to-server)
+      if (!origin) return callback(null, true);
 
       const isLocalhost = /^http:\/\/localhost:\d+$/.test(origin);
       const isNgrok = origin.endsWith("ngrok-free.dev");
 
       if (isLocalhost || isNgrok || allowedOrigins.includes(origin)) {
+        console.log(`✅ CORS ALLOWED: ${origin}`);
         return callback(null, true);
       }
 
+      console.error(`❌ CORS BLOCKED: ${origin}`);
       return callback(new Error(`CORS BLOCKED: ${origin}`));
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    exposedHeaders: ["Content-Range", "X-Content-Range"],
   })
 );
-
 
 app.options("*", cors());
 
