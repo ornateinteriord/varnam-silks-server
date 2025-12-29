@@ -208,7 +208,10 @@ exports.createPaymentOrder = async (req, res) => {
                 customer_email: email || "customer@example.com"
             },
             order_meta: {
-                return_url: `${process.env.FRONTEND_URL}/user/wallet?order_id=${orderId}`
+                return_url: `${Cashfree.IS_SANDBOX ?
+                    (process.env.FRONTEND_URL_DEV || process.env.FRONTEND_URL) :
+                    (process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL)
+                    }/user/wallet?order_id=${orderId}`
             }
         };
 
@@ -263,12 +266,20 @@ exports.handleCashfreeWebhook = async (req, res) => {
         const timestamp = req.headers["x-webhook-timestamp"];
         const rawBody = req.rawBody; // Required from index.js config
 
-        // Verify Signature
-        const generatedSignature = crypto.createHmac('sha256', process.env.CASHFREE_WEBHOOK_SECRET)
+        // Verify Signature using environment-specific webhook secret
+        const webhookSecret = Cashfree.WEBHOOK_SECRET || process.env.CASHFREE_WEBHOOK_SECRET;
+
+        if (!webhookSecret) {
+            console.error("❌ WEBHOOK_SECRET not configured!");
+            return res.status(500).json({ message: "Webhook secret not configured" });
+        }
+
+        const generatedSignature = crypto.createHmac('sha256', webhookSecret)
             .update(timestamp + rawBody)
             .digest('base64');
 
         if (signature !== generatedSignature) {
+            console.warn("⚠️ Webhook signature verification failed!");
             return res.status(403).json({ message: "Invalid Signature" });
         }
 

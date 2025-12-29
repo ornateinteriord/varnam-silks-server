@@ -52,7 +52,11 @@ app.options("*", cors());
 // ======================================================
 // ⚠️ IMPORTANT: RAW BODY FOR CASHFREE WEBHOOK
 // ======================================================
-app.use("/transaction/webhook/cashfree", express.raw({ type: "*/*" }));
+// Capture raw body before JSON parsing for signature verification
+app.use('/transaction/webhook/cashfree', express.raw({ type: 'application/json' }), (req, res, next) => {
+  req.rawBody = req.body.toString('utf8');
+  next();
+});
 
 // ======================================================
 //        📦 BODY PARSER (normal APIs)
