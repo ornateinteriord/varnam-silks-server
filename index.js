@@ -35,9 +35,6 @@ const allowedOrigins = [
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  // Log all incoming requests for debugging
-  console.log(`🌐 Incoming ${req.method} to ${req.path} from origin: ${origin || 'No Origin'}`);
-
   if (origin) {
     // Check if origin is allowed
     const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
@@ -45,7 +42,6 @@ app.use((req, res, next) => {
     const isVercel = origin.includes(".vercel.app") || origin.includes(".now.sh");
 
     if (isLocalhost || isNgrok || isVercel || allowedOrigins.includes(origin)) {
-      console.log(`✅ CORS ALLOWED for: ${origin}`);
       res.header('Access-Control-Allow-Origin', origin);
     } else {
       console.warn(`⚠️ CORS NOT ALLOWED for: ${origin}`);
@@ -80,10 +76,8 @@ const corsOptions = {
     const isAllowed = isLocalhost || isNgrok || isVercel || allowedOrigins.includes(origin);
 
     if (isAllowed) {
-      console.log(`✅ CORS ALLOWED: ${origin}`);
       callback(null, true);
     } else {
-      console.error(`❌ CORS BLOCKED: ${origin} not in allowed list`);
       callback(new Error(`CORS not allowed for origin: ${origin}`), false);
     }
   },

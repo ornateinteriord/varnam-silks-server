@@ -31,10 +31,14 @@ const cashfree = new Cashfree(environment, appId, secretKey);
 
 // Log payment mode and credential info for debugging
 console.log("=== Cashfree SDK Initialization ===");
+console.log(`PAYMENT_MODE env value: "${process.env.PAYMENT_MODE}"`);
+console.log(`isSandbox calculated: ${isSandbox}`);
 console.log(`Mode: ${isSandbox ? 'SANDBOX (Test)' : 'PRODUCTION (Live)'}`);
-console.log(`App ID: ${appId}`);
+console.log(`CASHFREE_SANDBOX_APP_ID: ${process.env.CASHFREE_SANDBOX_APP_ID}`);
+console.log(`CASHFREE_PRODUCTION_APP_ID: ${process.env.CASHFREE_PRODUCTION_APP_ID}`);
+console.log(`Selected App ID: ${appId}`);
 console.log(`Secret Key Length: ${secretKey?.length || 0} chars`);
-console.log(`Secret Key (first 10): ${secretKey?.substring(0, 10)}...`);
+console.log(`Secret Key (first 15): ${secretKey?.substring(0, 15)}...`);
 console.log(`Environment: ${environment}`);
 console.log(`Instance XClientId: ${cashfree.XClientId}`);
 console.log(`Instance XClientSecret length: ${cashfree.XClientSecret?.length}`);

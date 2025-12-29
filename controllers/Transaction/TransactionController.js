@@ -211,7 +211,18 @@ exports.createPaymentOrder = async (req, res) => {
             }
         };
 
-        const response = await Cashfree.PGCreateOrder("2023-08-01", request);
+        // Use direct axios call instead of SDK to avoid serialization issues
+        const axios = require('axios');
+        const baseUrl = Cashfree.IS_SANDBOX ? 'https://sandbox.cashfree.com' : 'https://api.cashfree.com';
+
+        const response = await axios.post(`${baseUrl}/pg/orders`, request, {
+            headers: {
+                'Content-Type': 'application/json',
+                'x-client-id': Cashfree.XClientId,
+                'x-client-secret': Cashfree.XClientSecret,
+                'x-api-version': '2023-08-01'
+            }
+        });
         const paymentSessionId = response.data.payment_session_id;
 
         // Create Pending Transaction in DB with account details
@@ -366,7 +377,18 @@ exports.checkPaymentStatus = async (req, res) => {
 
     try {
         const { orderId } = req.params;
-        const response = await Cashfree.PGOrderFetchPayments("2023-08-01", orderId, null, null, null);
+        // Use direct axios call instead of SDK
+        const axios = require('axios');
+        const baseUrl = Cashfree.IS_SANDBOX ? 'https://sandbox.cashfree.com' : 'https://api.cashfree.com';
+
+        const response = await axios.get(`${baseUrl}/pg/orders/${orderId}/payments`, {
+            headers: {
+                'Content-Type': 'application/json',
+                'x-client-id': Cashfree.XClientId,
+                'x-client-secret': Cashfree.XClientSecret,
+                'x-api-version': '2023-08-01'
+            }
+        });
 
         // Logic to sync DB if needed
         const payments = response.data;
