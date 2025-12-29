@@ -1,6 +1,7 @@
 const TransactionModel = require("../../models/transaction.model");
-const Cashfree = require("../../utils/cashfree");
+const cashfreeConfig = require("../../utils/cashfree");
 const crypto = require("crypto");
+const axios = require("axios");
 // Unified format for Transaction ID
 const generateTransactionId = () => `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -204,23 +205,20 @@ exports.createPaymentOrder = async (req, res) => {
                 customer_email: email || "customer@example.com"
             },
             order_meta: {
-                return_url: `${Cashfree.IS_SANDBOX ?
+                return_url: `${cashfreeConfig.IS_SANDBOX ?
                     (process.env.FRONTEND_URL_DEV || process.env.FRONTEND_URL) :
                     (process.env.FRONTEND_URL_PROD || process.env.FRONTEND_URL)
                     }/user/wallet?order_id=${orderId}`
             }
         };
 
-        // Use direct axios call instead of SDK to avoid serialization issues
-        const axios = require('axios');
-        const baseUrl = Cashfree.IS_SANDBOX ? 'https://sandbox.cashfree.com' : 'https://api.cashfree.com';
-
-        const response = await axios.post(`${baseUrl}/pg/orders`, request, {
+        // Direct axios call to Cashfree API
+        const response = await axios.post(`${cashfreeConfig.CASHFREE_BASE_URL}/pg/orders`, request, {
             headers: {
                 'Content-Type': 'application/json',
-                'x-client-id': Cashfree.XClientId,
-                'x-client-secret': Cashfree.XClientSecret,
-                'x-api-version': '2023-08-01'
+                'x-client-id': cashfreeConfig.CASHFREE_APP_ID,
+                'x-client-secret': cashfreeConfig.CASHFREE_SECRET_KEY,
+                'x-api-version': cashfreeConfig.X_API_VERSION
             }
         });
         const paymentSessionId = response.data.payment_session_id;
@@ -284,7 +282,7 @@ exports.handleCashfreeWebhook = async (req, res) => {
         const rawBody = req.rawBody; // Required from index.js config
 
         // Verify Signature using environment-specific webhook secret
-        const webhookSecret = Cashfree.WEBHOOK_SECRET || process.env.CASHFREE_WEBHOOK_SECRET;
+        const webhookSecret = cashfreeConfig.WEBHOOK_SECRET;
 
         if (!webhookSecret) {
             console.error("❌ WEBHOOK_SECRET not configured!");
@@ -377,16 +375,14 @@ exports.checkPaymentStatus = async (req, res) => {
 
     try {
         const { orderId } = req.params;
-        // Use direct axios call instead of SDK
-        const axios = require('axios');
-        const baseUrl = Cashfree.IS_SANDBOX ? 'https://sandbox.cashfree.com' : 'https://api.cashfree.com';
 
-        const response = await axios.get(`${baseUrl}/pg/orders/${orderId}/payments`, {
+        // Direct axios call to Cashfree API
+        const response = await axios.get(`${cashfreeConfig.CASHFREE_BASE_URL}/pg/orders/${orderId}/payments`, {
             headers: {
                 'Content-Type': 'application/json',
-                'x-client-id': Cashfree.XClientId,
-                'x-client-secret': Cashfree.XClientSecret,
-                'x-api-version': '2023-08-01'
+                'x-client-id': cashfreeConfig.CASHFREE_APP_ID,
+                'x-client-secret': cashfreeConfig.CASHFREE_SECRET_KEY,
+                'x-api-version': cashfreeConfig.X_API_VERSION
             }
         });
 
