@@ -1,4 +1,4 @@
-const { Cashfree } = require("cashfree-pg");
+const { Cashfree, CFEnvironment } = require("cashfree-pg");
 require("dotenv").config();
 
 // Determine payment mode from environment
@@ -18,31 +18,29 @@ const secretKey = isSandbox
 if (!appId || !secretKey) {
     console.error(`❌ ERROR: Missing Cashfree credentials for ${PAYMENT_MODE} mode!`);
     console.error(`Please check your .env file and ensure ${isSandbox ? 'CASHFREE_SANDBOX_APP_ID and CASHFREE_SANDBOX_SECRET_KEY' :
-            'CASHFREE_PRODUCTION_APP_ID and CASHFREE_PRODUCTION_SECRET_KEY'
+        'CASHFREE_PRODUCTION_APP_ID and CASHFREE_PRODUCTION_SECRET_KEY'
         } are set.`);
     process.exit(1);
 }
 
-// Create Cashfree instance
-const cashfree = new Cashfree();
+// Get environment enum value
+const environment = isSandbox ? CFEnvironment.SANDBOX : CFEnvironment.PRODUCTION;
 
-// Configure Cashfree SDK
-cashfree.XClientId = appId;
-cashfree.XClientSecret = secretKey;
-cashfree.XApiVersion = "2023-08-01";
+// Create Cashfree instance with correct constructor order: (Environment, ClientId, ClientSecret)
+const cashfree = new Cashfree(environment, appId, secretKey);
 
-// Set environment
-if (isSandbox) {
-    cashfree.XEnvironment = Cashfree.Environment ? Cashfree.Environment.SANDBOX : "SANDBOX";
-    console.log("🧪 Cashfree Mode: SANDBOX (Test)");
-    console.log(`   App ID: ${appId.substring(0, 20)}...`);
-} else {
-    cashfree.XEnvironment = Cashfree.Environment ? Cashfree.Environment.PRODUCTION : "PRODUCTION";
-    console.log("🚀 Cashfree Mode: PRODUCTION (Live)");
-    console.log(`   App ID: ${appId.substring(0, 20)}...`);
-}
+// Log payment mode and credential info for debugging
+console.log("=== Cashfree SDK Initialization ===");
+console.log(`Mode: ${isSandbox ? 'SANDBOX (Test)' : 'PRODUCTION (Live)'}`);
+console.log(`App ID: ${appId}`);
+console.log(`Secret Key Length: ${secretKey?.length || 0} chars`);
+console.log(`Secret Key (first 10): ${secretKey?.substring(0, 10)}...`);
+console.log(`Environment: ${environment}`);
+console.log(`Instance XClientId: ${cashfree.XClientId}`);
+console.log(`Instance XClientSecret length: ${cashfree.XClientSecret?.length}`);
+console.log("===================================");
 
-// Export both cashfree instance and helper info
+// Export the cashfree instance with helper info
 module.exports = cashfree;
 module.exports.PAYMENT_MODE = PAYMENT_MODE;
 module.exports.IS_SANDBOX = isSandbox;

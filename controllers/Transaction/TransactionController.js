@@ -170,10 +170,6 @@ exports.createPaymentOrder = async (req, res) => {
 
         const orderId = `ORDER_${Date.now()}`;
 
-        // Fetch account details if account_id is provided
-        let accountNumber = `WALLET-${member_id}`; // Default fallback
-        let accountType = 'Wallet'; // Default fallback
-
         if (account_id) {
             const AccountsModel = require("../../models/accounts.model");
             const AccountGroupModel = require("../../models/accountGroup.model");
@@ -215,7 +211,7 @@ exports.createPaymentOrder = async (req, res) => {
             }
         };
 
-        const response = await Cashfree.PGCreateOrder(request);
+        const response = await Cashfree.PGCreateOrder("2023-08-01", request);
         const paymentSessionId = response.data.payment_session_id;
 
         // Create Pending Transaction in DB with account details
@@ -249,7 +245,17 @@ exports.createPaymentOrder = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Cashfree Order Error:", error.response?.data?.message || error.message);
+        console.error("=== Cashfree Order Error ===");
+        console.error("Error Message:", error.message);
+        console.error("Error Response Data:", JSON.stringify(error.response?.data, null, 2));
+        console.error("Error Response Status:", error.response?.status);
+        console.error("Error Response Headers:", JSON.stringify(error.response?.headers, null, 2));
+        console.error("Request Config:", JSON.stringify({
+            url: error.config?.url,
+            method: error.config?.method,
+            headers: error.config?.headers
+        }, null, 2));
+        console.error("===========================");
         return res.status(500).json({
             success: false,
             message: error.response?.data?.message || error.message
@@ -360,7 +366,7 @@ exports.checkPaymentStatus = async (req, res) => {
 
     try {
         const { orderId } = req.params;
-        const response = await Cashfree.PGOrderFetchPayments("2023-08-01", orderId);
+        const response = await Cashfree.PGOrderFetchPayments("2023-08-01", orderId, null, null, null);
 
         // Logic to sync DB if needed
         const payments = response.data;
