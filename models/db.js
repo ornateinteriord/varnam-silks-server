@@ -24,6 +24,8 @@ const connectDB = async () => {
     };
 
     console.log("🔄 Connecting to MongoDB...");
+    console.log("MONGO_URI exists:", !!process.env.MONGO_URI);
+    console.log("MONGO_URI prefix:", process.env.MONGO_URI?.substring(0, 30) + "...");
 
     const connection = await mongoose.connect(process.env.MONGO_URI, options);
 
