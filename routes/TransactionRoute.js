@@ -15,8 +15,8 @@ router.post('/transfer-money', Authenticated, transferMoney); // /transaction/tr
 router.post('/withdraw-request', Authenticated, requestWithdraw); // /transaction/withdraw-request
 
 // Cashfree Routes
-router.post('/create-order', createPaymentOrder);
-router.post('/webhook/cashfree', handleCashfreeWebhook);
-router.get('/status/:orderId', checkPaymentStatus);
+router.post('/create-order', Authenticated, createPaymentOrder);
+router.post('/webhook/cashfree', Authenticated, handleCashfreeWebhook);
+router.get('/status/:orderId', Authenticated, checkPaymentStatus);
 
 module.exports = router;
