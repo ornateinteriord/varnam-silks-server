@@ -1,7 +1,7 @@
 const { createMember, getMembers, updateMember, getMemberById } = require("../controllers/Admin/Member/index");
 const { createAgent, getAgents, updateAgent, getAgentById } = require("../controllers/Admin/Agent/index");
 const { createInterest, getInterests, updateInterest, getInterestById } = require("../controllers/Admin/Interest/index");
-const { getInterestsByAccountGroup, createAccount, getAccounts, getAccountById, updateAccount, getAccountBooks, getAccountGroups } = require("../controllers/Admin/Account/index");
+const { getInterestsByAccountGroup, createAccount, getAccounts, getAccountById, updateAccount, getAccountBooks, getAccountGroups, getPreMaturityAccounts, getPostMaturityAccounts } = require("../controllers/Admin/Account/index");
 const { getDashboardCounts, getRecentData } = require("../controllers/Admin/Dashboard/index");
 const Authenticated = require("../middlewares/auth");
 const authorizeRoles = require("../middlewares/authorizeRole");
@@ -34,6 +34,8 @@ router.get('/get-account/:accountId', Authenticated, authorizeRoles(["ADMIN"]), 
 router.put('/update-account/:accountId', Authenticated, authorizeRoles(["ADMIN"]), updateAccount)
 router.get('/get-account-books', Authenticated, authorizeRoles(["ADMIN", "AGENT"]), getAccountBooks)
 router.get('/get-account-groups', Authenticated, authorizeRoles(["ADMIN", "AGENT"]), getAccountGroups)
+router.get('/get-pre-maturity-accounts', Authenticated, authorizeRoles(["ADMIN"]), getPreMaturityAccounts)
+router.get('/get-post-maturity-accounts', Authenticated, authorizeRoles(["ADMIN"]), getPostMaturityAccounts)
 
 // Dashboard routes
 router.get('/get-dashboard-counts', Authenticated, authorizeRoles(["ADMIN"]), getDashboardCounts)

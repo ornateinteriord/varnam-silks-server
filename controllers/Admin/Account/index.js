@@ -371,6 +371,200 @@ const getAccountGroups = async (req, res) => {
     }
 };
 
+// Get pre-maturity accounts (date_of_maturity >= today)
+const getPreMaturityAccounts = async (req, res) => {
+    try {
+        const { account_type, date_of_maturity, page = 1, limit = 10 } = req.query;
+
+        // Build filter object
+        const filter = {
+            status: { $nin: ["closed", "inactive"] } // Only active/pending accounts
+        };
+
+        // Filter by account_type if provided
+        if (account_type) {
+            filter.account_type = account_type;
+        }
+
+        // Determine the date to compare against
+        let comparisonDate;
+        if (date_of_maturity) {
+            comparisonDate = new Date(date_of_maturity);
+        } else {
+            comparisonDate = new Date();
+        }
+        comparisonDate.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
+
+        // Pre-maturity: date_of_maturity >= today (future or present)
+        filter.date_of_maturity = {
+            $gte: comparisonDate,
+            $ne: null // Exclude accounts without maturity date
+        };
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        const accounts = await AccountsModel.find(filter)
+            .sort({ date_of_maturity: 1 }) // Sort by nearest maturity date first
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const totalAccounts = await AccountsModel.countDocuments(filter);
+
+        // Fetch member details for each account
+        const accountsWithMemberDetails = await Promise.all(
+            accounts.map(async (account) => {
+                const accountObj = account.toObject();
+
+                if (accountObj.member_id) {
+                    const member = await MemberModel.findOne(
+                        { member_id: accountObj.member_id },
+                        { name: 1, contactno: 1, emailid: 1, address: 1, _id: 0 }
+                    );
+
+                    if (member) {
+                        accountObj.memberDetails = {
+                            name: member.name,
+                            contactno: member.contactno,
+                            emailid: member.emailid,
+                            address: member.address
+                        };
+                    }
+                }
+
+                // Fetch account group details
+                if (accountObj.account_type) {
+                    const accountGroup = await AccountGroupModel.findOne(
+                        { account_group_id: accountObj.account_type },
+                        { account_group_name: 1, _id: 0 }
+                    );
+
+                    if (accountGroup) {
+                        accountObj.account_type_name = accountGroup.account_group_name;
+                    }
+                }
+
+                return accountObj;
+            })
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Pre-maturity accounts fetched successfully",
+            data: accountsWithMemberDetails,
+            pagination: {
+                total: totalAccounts,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(totalAccounts / parseInt(limit))
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching pre-maturity accounts:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch pre-maturity accounts",
+            error: error.message
+        });
+    }
+};
+
+// Get post-maturity accounts (date_of_maturity < today)
+const getPostMaturityAccounts = async (req, res) => {
+    try {
+        const { account_type, date_of_maturity, page = 1, limit = 10 } = req.query;
+
+        // Build filter object
+        const filter = {
+            status: { $nin: ["closed", "inactive"] } // Only active/pending accounts
+        };
+
+        // Filter by account_type if provided
+        if (account_type) {
+            filter.account_type = account_type;
+        }
+
+        // Determine the date to compare against
+        let comparisonDate;
+        if (date_of_maturity) {
+            comparisonDate = new Date(date_of_maturity);
+        } else {
+            comparisonDate = new Date();
+        }
+        comparisonDate.setHours(0, 0, 0, 0); // Set to start of day for accurate comparison
+
+        // Post-maturity: date_of_maturity < today (past)
+        filter.date_of_maturity = {
+            $lt: comparisonDate,
+            $ne: null // Exclude accounts without maturity date
+        };
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        const accounts = await AccountsModel.find(filter)
+            .sort({ date_of_maturity: -1 }) // Sort by most recent maturity date first
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const totalAccounts = await AccountsModel.countDocuments(filter);
+
+        // Fetch member details for each account
+        const accountsWithMemberDetails = await Promise.all(
+            accounts.map(async (account) => {
+                const accountObj = account.toObject();
+
+                if (accountObj.member_id) {
+                    const member = await MemberModel.findOne(
+                        { member_id: accountObj.member_id },
+                        { name: 1, contactno: 1, emailid: 1, address: 1, _id: 0 }
+                    );
+
+                    if (member) {
+                        accountObj.memberDetails = {
+                            name: member.name,
+                            contactno: member.contactno,
+                            emailid: member.emailid,
+                            address: member.address
+                        };
+                    }
+                }
+
+                // Fetch account group details
+                if (accountObj.account_type) {
+                    const accountGroup = await AccountGroupModel.findOne(
+                        { account_group_id: accountObj.account_type },
+                        { account_group_name: 1, _id: 0 }
+                    );
+
+                    if (accountGroup) {
+                        accountObj.account_type_name = accountGroup.account_group_name;
+                    }
+                }
+
+                return accountObj;
+            })
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Post-maturity accounts fetched successfully",
+            data: accountsWithMemberDetails,
+            pagination: {
+                total: totalAccounts,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(totalAccounts / parseInt(limit))
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching post-maturity accounts:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch post-maturity accounts",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getInterestsByAccountGroup,
     createAccount,
@@ -378,5 +572,7 @@ module.exports = {
     getAccountById,
     updateAccount,
     getAccountBooks,
-    getAccountGroups
+    getAccountGroups,
+    getPreMaturityAccounts,
+    getPostMaturityAccounts
 };
