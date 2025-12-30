@@ -103,7 +103,7 @@ const corsOptions = {
 // ⚠️ IMPORTANT: RAW BODY FOR CASHFREE WEBHOOK
 // ======================================================
 // Capture raw body before JSON parsing for signature verification
-app.use('/transaction/webhook', express.raw({ type: 'application/json' }), (req, res, next) => {
+app.use('/transaction/webhook/cashfree', express.raw({ type: 'application/json' }), (req, res, next) => {
   req.rawBody = req.body.toString('utf8');
   next();
 });
