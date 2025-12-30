@@ -19,6 +19,25 @@ const CashTransactionRoutes = require("./routes/CashTransactionRoute");
 const app = express();
 
 // ======================================================
+// ⚠️ CRITICAL: CASHFREE WEBHOOK - MUST BE FIRST
+// ======================================================
+// Handle Cashfree webhook BEFORE any other middleware
+// This route needs raw body for signature verification
+const { handleCashfreeWebhook } = require("./controllers/Transaction/TransactionController");
+
+app.post('/transaction/webhook/cashfree',
+  express.raw({ type: 'application/json' }),
+  (req, res, next) => {
+    // Store raw body for signature verification
+    req.rawBody = req.body.toString('utf8');
+    console.log('🔔 Cashfree Webhook Received');
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    next();
+  },
+  handleCashfreeWebhook
+);
+
+// ======================================================
 //        🛡️ CORS CONFIG (Fixed for Vercel)
 // ======================================================
 const allowedOrigins = [
@@ -98,15 +117,6 @@ const corsOptions = {
 
 // Apply CORS middleware (choose one approach)
 // app.use(cors(corsOptions));
-
-// ======================================================
-// ⚠️ IMPORTANT: RAW BODY FOR CASHFREE WEBHOOK
-// ======================================================
-// Capture raw body before JSON parsing for signature verification
-app.use('/transaction/webhook/cashfree', express.raw({ type: 'application/json' }), (req, res, next) => {
-  req.rawBody = req.body.toString('utf8');
-  next();
-});
 
 // ======================================================
 //        📦 BODY PARSER (normal APIs)

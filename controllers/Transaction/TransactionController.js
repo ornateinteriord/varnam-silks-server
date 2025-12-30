@@ -277,9 +277,15 @@ exports.handleCashfreeWebhook = async (req, res) => {
     const AccountsModel = require("../../models/accounts.model");
 
     try {
+        console.log('=== Cashfree Webhook Processing Started ===');
+
         const signature = req.headers["x-webhook-signature"];
         const timestamp = req.headers["x-webhook-timestamp"];
         const rawBody = req.rawBody; // Required from index.js config
+
+        console.log('Signature received:', signature);
+        console.log('Timestamp:', timestamp);
+        console.log('Raw body length:', rawBody?.length);
 
         // Verify Signature using environment-specific webhook secret
         const webhookSecret = cashfreeConfig.WEBHOOK_SECRET;
@@ -289,25 +295,43 @@ exports.handleCashfreeWebhook = async (req, res) => {
             return res.status(500).json({ message: "Webhook secret not configured" });
         }
 
+        console.log('Webhook secret configured:', !!webhookSecret);
+
         const generatedSignature = crypto.createHmac('sha256', webhookSecret)
             .update(timestamp + rawBody)
             .digest('base64');
 
+        console.log('Generated signature:', generatedSignature);
+        console.log('Signatures match:', signature === generatedSignature);
+
         if (signature !== generatedSignature) {
             console.warn("⚠️ Webhook signature verification failed!");
+            console.warn(`Expected: ${generatedSignature}`);
+            console.warn(`Received: ${signature}`);
             return res.status(403).json({ message: "Invalid Signature" });
         }
 
-        const event = req.body;
+        console.log('✅ Signature verified successfully');
+
+        const event = JSON.parse(rawBody);
+        console.log('Event type:', event.type);
+
         // Check event type: PAYMENT_SUCCESS or PAYMENT_FAILED
 
         if (event.type === "PAYMENT_SUCCESS_WEBHOOK") {
             const orderId = event.data.order.order_id;
+            console.log('Processing success webhook for order:', orderId);
 
             const transaction = await TransactionModel.findOne({ transaction_id: orderId });
-            if (!transaction) return res.status(404).json({ message: "Transaction not found" });
+            if (!transaction) {
+                console.error('Transaction not found for order:', orderId);
+                return res.status(404).json({ message: "Transaction not found" });
+            }
 
-            if (transaction.status === "Completed") return res.status(200).json({ message: "Already Processed" });
+            if (transaction.status === "Completed") {
+                console.log('Transaction already processed:', orderId);
+                return res.status(200).json({ message: "Already Processed" });
+            }
 
             // Update Transaction
             transaction.payment_status = "Success";
@@ -334,7 +358,7 @@ exports.handleCashfreeWebhook = async (req, res) => {
                     // Set transaction balance to the account's new balance
                     transaction.balance = newAccountBalance;
 
-                    console.log(`Account ${account.account_no} credited with ₹${transaction.credit}. New balance: ₹${newAccountBalance}`);
+                    console.log(`✅ Account ${account.account_no} credited with ₹${transaction.credit}. New balance: ₹${newAccountBalance}`);
                 } else {
                     console.error(`Account not found for transaction ${orderId}`);
                     transaction.description += " (Warning: Account not found for balance update)";
@@ -347,10 +371,13 @@ exports.handleCashfreeWebhook = async (req, res) => {
             }
 
             await transaction.save(); // Save Transaction
+            console.log('✅ Transaction updated successfully');
 
             // Optional: Update Member Wallet Balance in Member Table if exists
         } else if (event.type === "PAYMENT_FAILED_WEBHOOK" || event.type === "PAYMENT_USER_DROPPED_WEBHOOK") {
             const orderId = event.data.order.order_id;
+            console.log('Processing failed webhook for order:', orderId);
+
             await TransactionModel.findOneAndUpdate(
                 { transaction_id: orderId },
                 {
@@ -359,13 +386,18 @@ exports.handleCashfreeWebhook = async (req, res) => {
                     description: `Online Top-up Failed: ${event.data.payment.payment_message || 'User Dropped'}`
                 }
             );
+            console.log('✅ Failed transaction updated');
         }
 
+        console.log('=== Webhook Processing Completed Successfully ===');
         res.status(200).json({ received: true });
 
     } catch (error) {
-        console.error("Webhook Error", error);
-        res.status(500).json({ message: "Internal Server Error" });
+        console.error("=== Webhook Error ===");
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
+        console.error("====================");
+        res.status(500).json({ message: "Internal Server Error", error: error.message });
     }
 };
 
