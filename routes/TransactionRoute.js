@@ -1,7 +1,9 @@
 const express = require("express");
 const router = express.Router();
-const { getTransactions, addTransaction, getAllTransactions, createPaymentOrder, handleCashfreeWebhook, checkPaymentStatus, transferMoney, requestWithdraw } = require("../controllers/Transaction/TransactionController");
+const { getTransactions, addTransaction, getAllTransactions, createPaymentOrder, handleCashfreeWebhook, checkPaymentStatus, transferMoney, requestWithdraw, triggerTestWebhook, testPaymentStatus } = require("../controllers/Transaction/TransactionController");
+const { submitKYC, getKycSubmissions } = require("../controllers/KYC/KycController");
 const Authenticated = require("../middlewares/auth");
+const authorizeRoles = require("../middlewares/authorizeRole");
 
 // Unified Transaction Routes
 router.post('/add', Authenticated, addTransaction); // /transaction/add
@@ -16,7 +18,33 @@ router.post('/withdraw-request', Authenticated, requestWithdraw); // /transactio
 
 // Cashfree Routes
 router.post('/create-order', Authenticated, createPaymentOrder);
-// Note: webhook route is handled in index.js BEFORE middleware stack
+router.post("/webhook/cashfree", express.raw({ type: 'application/json' }), handleCashfreeWebhook); // NO AUTH - Cashfree uses signature verification
 router.get('/status/:orderId', Authenticated, checkPaymentStatus);
+
+// Test Webhook Routes
+router.post('/test/webhook', Authenticated, triggerTestWebhook);
+router.put('/test/payment/:orderId/success', Authenticated, testPaymentStatus);
+
+// KYC Routes
+router.post('/kyc/submit', submitKYC); // /transaction/kyc/submit
+// router.post('/kyc/approve', Authenticated, authorizeRoles(["ADMIN"]), approveKYC); // /transaction/kyc/approve
+// router.get('/kyc/submissions', Authenticated, authorizeRoles(["ADMIN"]), getKycSubmissions); // /transaction/kyc/submissions
+
+// Diagnostic endpoint to check Cashfree configuration
+router.get('/cashfree-config', Authenticated, (req, res) => {
+    const cashfreeConfig = require("../utils/cashfree");
+    res.json({
+        environment: cashfreeConfig.NODE_ENV,
+        isProduction: cashfreeConfig.IS_PRODUCTION,
+        isSandbox: cashfreeConfig.IS_SANDBOX,
+        baseUrl: cashfreeConfig.CASHFREE_BASE_URL,
+        appIdConfigured: !!cashfreeConfig.CASHFREE_APP_ID,
+        appIdLength: cashfreeConfig.CASHFREE_APP_ID?.length || 0,
+        secretKeyConfigured: !!cashfreeConfig.CASHFREE_SECRET_KEY,
+        secretKeyLength: cashfreeConfig.CASHFREE_SECRET_KEY?.length || 0,
+        webhookSecretConfigured: !!cashfreeConfig.WEBHOOK_SECRET,
+        apiVersion: cashfreeConfig.X_API_VERSION
+    });
+});
 
 module.exports = router;

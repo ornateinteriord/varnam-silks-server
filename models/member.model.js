@@ -103,6 +103,35 @@ const memberSchema = mongoose.Schema(
       type: String,
       default: "USER",
     },
+    // KYC fields
+    account_number: {
+      type: String,
+      default: null,
+    },
+    ifsc_code: {
+      type: String,
+      default: null,
+    },
+    bank_name: {
+      type: String,
+      default: null,
+    },
+    kycStatus: {
+      type: String,
+      default: "PENDING",
+    },
+    beneficiaryStatus: {
+      type: String,
+      default: "NOT_CREATED",
+    },
+    beneficiaryId: {
+      type: String,
+      default: null,
+    },
+    bank_details: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true, collection: "member_tbl" }
 );
