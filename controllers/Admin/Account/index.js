@@ -565,6 +565,46 @@ const getPostMaturityAccounts = async (req, res) => {
     }
 };
 
+// Get account transactions with optional account_type filter (for admin)
+const getAccountTransactions = async (req, res) => {
+    try {
+        const { memberId } = req.params;
+        const { account_type } = req.query;
+
+        if (!memberId) {
+            return res.status(400).json({
+                success: false,
+                message: "Member ID is required"
+            });
+        }
+
+        // Build query filter
+        const TransactionModel = require("../../../models/transaction.model");
+        const filter = { member_id: memberId };
+        if (account_type) {
+            filter.account_type = account_type;
+        }
+
+        // Find all transactions for this member (optionally filtered by account type)
+        const transactions = await TransactionModel.find(filter)
+            .sort({ transaction_date: -1 })
+            .select('transaction_id transaction_date account_number account_type transaction_type description credit debit balance status reference_no');
+
+        res.status(200).json({
+            success: true,
+            message: "Account transactions fetched successfully",
+            data: transactions
+        });
+    } catch (error) {
+        console.error("Error fetching account transactions:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch account transactions",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getInterestsByAccountGroup,
     createAccount,
@@ -574,5 +614,6 @@ module.exports = {
     getAccountBooks,
     getAccountGroups,
     getPreMaturityAccounts,
-    getPostMaturityAccounts
+    getPostMaturityAccounts,
+    getAccountTransactions
 };
