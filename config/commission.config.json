@@ -1,0 +1,74 @@
+{
+  "enabled": true,
+  "minimumTransactionAmount": 100,
+  "description": "Multi-level commission configuration for FD, RD, and Pigmy accounts",
+  "levels": [
+    {
+      "level": 1,
+      "rates": {
+        "FD": 4.50,
+        "RD": 4.50,
+        "Pigmy": 4.50
+      }
+    },
+    {
+      "level": 2,
+      "rates": {
+        "FD": 1.00,
+        "RD": 1.00,
+        "Pigmy": 1.00
+      }
+    },
+    {
+      "level": 3,
+      "rates": {
+        "FD": 0.50,
+        "RD": 0.50,
+        "Pigmy": 0.50
+      }
+    },
+    {
+      "level": 4,
+      "rates": {
+        "FD": 0.25,
+        "RD": 0.25,
+        "Pigmy": 0.25
+      }
+    },
+    {
+      "level": 5,
+      "rates": {
+        "FD": 0.25,
+        "RD": 0.25,
+        "Pigmy": 0.25
+      }
+    },
+    {
+      "level": 6,
+      "rates": {
+        "FD": 0.25,
+        "RD": 0.25,
+        "Pigmy": 0.25
+      }
+    },
+    {
+      "level": 7,
+      "rates": {
+        "FD": 0.25,
+        "RD": 0.25,
+        "Pigmy": 0.25
+      }
+    }
+  ],
+  "accountTypeMapping": {
+    "1": "FD",
+    "2": "RD",
+    "3": "Pigmy"
+  },
+  "notes": [
+    "Commission rates are in percentage (%)",
+    "Level 1 is the direct introducer",
+    "Maximum 7 levels of commission hierarchy",
+    "This configuration can be updated dynamically via the admin API"
+  ]
+}

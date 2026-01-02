@@ -83,6 +83,21 @@ const memberSchema = mongoose.Schema(
       type: String,
       default: null,
     },
+    // Commission tracking
+    commission_eligible: {
+      type: Boolean,
+      default: true,
+    },
+    introducer_hierarchy: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (v) {
+          return v.length <= 7;
+        },
+        message: 'Introducer hierarchy cannot exceed 7 levels'
+      }
+    },
     member_image: {
       type: String,
       default: null,

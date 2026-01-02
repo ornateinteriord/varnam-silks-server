@@ -1,0 +1,431 @@
+const fs = require("fs");
+const path = require("path");
+const MemberModel = require("../models/member.model");
+const AgentModel = require("../models/agent.model");
+const CommissionModel = require("../models/commission.model");
+const AccountsModel = require("../models/accounts.model");
+
+// Load commission configuration
+const loadCommissionConfig = () => {
+    try {
+        const configPath = path.join(__dirname, "../config/commission.config.json");
+        const configData = fs.readFileSync(configPath, "utf8");
+        return JSON.parse(configData);
+    } catch (error) {
+        console.error("Error loading commission config:", error);
+        throw new Error("Failed to load commission configuration");
+    }
+};
+
+// Save commission configuration (for admin updates)
+const saveCommissionConfig = (config) => {
+    try {
+        const configPath = path.join(__dirname, "../config/commission.config.json");
+        fs.writeFileSync(configPath, JSON.stringify(config, null, 2), "utf8");
+        return true;
+    } catch (error) {
+        console.error("Error saving commission config:", error);
+        throw new Error("Failed to save commission configuration");
+    }
+};
+
+// Get introducer hierarchy for a member or agent
+const getIntroducerHierarchy = async (userId, userType) => {
+    try {
+        let user;
+        if (userType === "MEMBER") {
+            user = await MemberModel.findOne({ member_id: userId });
+        } else if (userType === "AGENT") {
+            user = await AgentModel.findOne({ agent_id: userId });
+        }
+
+        if (!user) {
+            return [];
+        }
+
+        return user.introducer_hierarchy || [];
+    } catch (error) {
+        console.error("Error getting introducer hierarchy:", error);
+        return [];
+    }
+};
+
+// Build introducer hierarchy when creating new member/agent
+const buildIntroducerHierarchy = async (introducerId, introducerType) => {
+    try {
+        if (!introducerId) {
+            return [];
+        }
+
+        let introducer;
+        if (introducerType === "MEMBER") {
+            introducer = await MemberModel.findOne({ member_id: introducerId });
+        } else if (introducerType === "AGENT") {
+            introducer = await AgentModel.findOne({ agent_id: introducerId });
+        }
+
+        if (!introducer) {
+            return [introducerId]; // Just the direct introducer
+        }
+
+        // Start with the direct introducer
+        const hierarchy = [introducerId];
+
+        // Add the introducer's hierarchy (up to 6 more levels for total of 7)
+        if (introducer.introducer_hierarchy && introducer.introducer_hierarchy.length > 0) {
+            const existingHierarchy = introducer.introducer_hierarchy.slice(0, 6);
+            hierarchy.push(...existingHierarchy);
+        }
+
+        return hierarchy;
+    } catch (error) {
+        console.error("Error building introducer hierarchy:", error);
+        return introducerId ? [introducerId] : [];
+    }
+};
+
+// Validate if transaction is eligible for commission
+const validateCommissionEligibility = (transaction, config) => {
+    console.log("\n🔍 Checking Commission Eligibility:");
+    console.log(`   Commission System: ${config.enabled ? '✅ Enabled' : '❌ Disabled'}`);
+
+    if (!config.enabled) {
+        console.log("   Result: ❌ Not Eligible - System disabled");
+        return { eligible: false, reason: "Commission system is disabled" };
+    }
+
+    console.log(`   Transaction Amount: ₹${transaction.credit}`);
+    console.log(`   Minimum Required: ₹${config.minimumTransactionAmount}`);
+
+    if (transaction.credit < config.minimumTransactionAmount) {
+        console.log("   Result: ❌ Not Eligible - Below minimum amount");
+        return {
+            eligible: false,
+            reason: `Transaction amount below minimum (${config.minimumTransactionAmount})`,
+        };
+    }
+
+    // Check if account type is commission-eligible (FD, RD, Pigmy)
+    const accountTypeId = transaction.account_type?.toString();
+    const eligibleTypes = ["1", "2", "3"]; // FD, RD, Pigmy
+
+    console.log(`   Account Type ID: ${accountTypeId}`);
+    console.log(`   Eligible Types: ${eligibleTypes.join(', ')}`);
+
+    if (!eligibleTypes.includes(accountTypeId)) {
+        console.log("   Result: ❌ Not Eligible - Account type not eligible");
+        return {
+            eligible: false,
+            reason: "Account type not eligible for commission",
+        };
+    }
+
+    console.log("   Result: ✅ Eligible for Commission!");
+    return { eligible: true };
+};
+
+// Map account type ID to name
+const getAccountTypeName = (accountTypeId, config) => {
+    const mapping = config.accountTypeMapping || {
+        "1": "FD",
+        "2": "RD",
+        "3": "Pigmy",
+    };
+    return mapping[accountTypeId?.toString()] || "Other";
+};
+
+// Calculate commissions for a transaction
+const calculateCommissions = async (transaction) => {
+    try {
+        const config = loadCommissionConfig();
+
+        // Validate eligibility
+        const eligibility = validateCommissionEligibility(transaction, config);
+        if (!eligibility.eligible) {
+            console.log(`Transaction ${transaction.transaction_id} not eligible: ${eligibility.reason}`);
+            return [];
+        }
+
+        // Get member/agent details
+        const memberId = transaction.member_id;
+        let sourceUser;
+        let sourceType = "MEMBER";
+
+        // Try to find as member first
+        sourceUser = await MemberModel.findOne({ member_id: memberId });
+        if (!sourceUser) {
+            // Try as agent
+            sourceUser = await AgentModel.findOne({ agent_id: memberId });
+            sourceType = "AGENT";
+        }
+
+        if (!sourceUser) {
+            console.log(`Source user not found: ${memberId}`);
+            return [];
+        }
+
+        // Check if source is commission eligible
+        if (!sourceUser.commission_eligible) {
+            console.log(`Source user ${memberId} not eligible for commission`);
+            return [];
+        }
+
+        // Get introducer hierarchy
+        const hierarchy = sourceUser.introducer_hierarchy || [];
+        if (hierarchy.length === 0) {
+            console.log(`No introducer hierarchy for ${memberId}`);
+            return [];
+        }
+
+        const accountTypeName = getAccountTypeName(transaction.account_type, config);
+        const transactionAmount = transaction.credit || 0;
+        const commissions = [];
+
+        // Calculate commission for each level
+        for (let i = 0; i < Math.min(hierarchy.length, 7); i++) {
+            const level = i + 1;
+            const beneficiaryId = hierarchy[i];
+
+            // Find the beneficiary
+            let beneficiary = await MemberModel.findOne({ member_id: beneficiaryId });
+            let beneficiaryType = "MEMBER";
+
+            if (!beneficiary) {
+                beneficiary = await AgentModel.findOne({ agent_id: beneficiaryId });
+                beneficiaryType = "AGENT";
+            }
+
+            if (!beneficiary) {
+                console.log(`Beneficiary not found at level ${level}: ${beneficiaryId}`);
+                continue;
+            }
+
+            // Check if beneficiary is commission eligible
+            if (!beneficiary.commission_eligible) {
+                console.log(`Beneficiary ${beneficiaryId} not eligible for commission`);
+                continue;
+            }
+
+            // Get commission rate for this level and account type
+            const levelConfig = config.levels.find((l) => l.level === level);
+            if (!levelConfig) {
+                console.log(`No config found for level ${level}`);
+                continue;
+            }
+
+            const commissionRate = levelConfig.rates[accountTypeName];
+            if (commissionRate === undefined || commissionRate === null) {
+                console.log(`No rate found for ${accountTypeName} at level ${level}`);
+                continue;
+            }
+
+            // Calculate commission amount
+            const commissionAmount = (transactionAmount * commissionRate) / 100;
+
+            commissions.push({
+                level,
+                beneficiary_id: beneficiaryId,
+                beneficiary_name: beneficiary.name,
+                beneficiary_type: beneficiaryType,
+                source_id: memberId,
+                source_name: sourceUser.name,
+                source_type: sourceType,
+                transaction_id: transaction.transaction_id,
+                transaction_date: transaction.transaction_date || new Date(),
+                account_type: accountTypeName,
+                account_type_id: transaction.account_type?.toString(),
+                transaction_amount: transactionAmount,
+                commission_rate: commissionRate,
+                commission_amount: commissionAmount,
+            });
+        }
+
+        return commissions;
+    } catch (error) {
+        console.error("Error calculating commissions:", error);
+        return [];
+    }
+};
+
+// Generate unique commission ID
+const generateCommissionId = async () => {
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    return `COMM${timestamp}${random}`;
+};
+
+// Distribute and credit commissions
+const distributeCommissions = async (commissions) => {
+    const results = {
+        successful: [],
+        failed: [],
+    };
+
+    for (const commission of commissions) {
+        try {
+            // Generate commission ID
+            const commissionId = await generateCommissionId();
+
+            // Create commission record
+            const commissionRecord = new CommissionModel({
+                commission_id: commissionId,
+                ...commission,
+                status: "PENDING",
+            });
+
+            await commissionRecord.save();
+
+            // Credit the commission amount to beneficiary's account
+            // Find beneficiary's first active account (preferably wallet/savings)
+            let beneficiaryIdField;
+            if (commission.beneficiary_type === "MEMBER") {
+                beneficiaryIdField = commission.beneficiary_id;
+            } else {
+                beneficiaryIdField = commission.beneficiary_id;
+            }
+
+            const beneficiaryAccount = await AccountsModel.findOne({
+                $or: [
+                    { member_id: beneficiaryIdField },
+                    { member_id: parseInt(beneficiaryIdField) }
+                ],
+                status: "active",
+            }).sort({ date_of_opening: 1 });
+
+            if (beneficiaryAccount) {
+                // Update account balance
+                beneficiaryAccount.account_amount =
+                    (parseFloat(beneficiaryAccount.account_amount) || 0) + commission.commission_amount;
+                await beneficiaryAccount.save();
+
+                // Update commission record as credited
+                commissionRecord.status = "CREDITED";
+                commissionRecord.credited_at = new Date();
+                await commissionRecord.save();
+
+                results.successful.push({
+                    commission_id: commissionId,
+                    beneficiary_id: commission.beneficiary_id,
+                    amount: commission.commission_amount,
+                });
+            } else {
+                // No account found - mark as failed
+                commissionRecord.status = "FAILED";
+                commissionRecord.failure_reason = "No active account found for beneficiary";
+                await commissionRecord.save();
+
+                results.failed.push({
+                    commission_id: commissionId,
+                    beneficiary_id: commission.beneficiary_id,
+                    reason: "No active account found",
+                });
+            }
+        } catch (error) {
+            console.error("Error distributing commission:", error);
+            results.failed.push({
+                beneficiary_id: commission.beneficiary_id,
+                reason: error.message,
+            });
+        }
+    }
+
+    return results;
+};
+
+// Process commission for a completed transaction
+const processTransactionCommission = async (transaction) => {
+    try {
+        console.log("\n" + "=".repeat(60));
+        console.log("🎯 COMMISSION PROCESSING STARTED");
+        console.log("=".repeat(60));
+        console.log(`📄 Transaction ID: ${transaction.transaction_id}`);
+        console.log(`👤 Member ID: ${transaction.member_id}`);
+        console.log(`💰 Amount: ₹${transaction.credit}`);
+        console.log(`🏦 Account Type: ${transaction.account_type}`);
+        console.log("-".repeat(60));
+
+        // Calculate commissions
+        const commissions = await calculateCommissions(transaction);
+
+        if (commissions.length === 0) {
+            console.log("❌ No commissions to distribute");
+            console.log("   Possible reasons:");
+            console.log("   - Member has no introducer");
+            console.log("   - Amount below minimum (₹100)");
+            console.log("   - Commission system disabled");
+            console.log("   - Account type not eligible");
+            console.log("=".repeat(60) + "\n");
+            return {
+                success: true,
+                message: "No commissions applicable",
+                commissions: [],
+            };
+        }
+
+        console.log(`✅ Found ${commissions.length} commission(s) to distribute:`);
+        commissions.forEach((comm, index) => {
+            console.log(`\n   Commission ${index + 1}:`);
+            console.log(`   └─ Level: ${comm.level}`);
+            console.log(`   └─ Beneficiary: ${comm.beneficiary_name} (${comm.beneficiary_id})`);
+            console.log(`   └─ Rate: ${comm.commission_rate}%`);
+            console.log(`   └─ Amount: ₹${comm.commission_amount.toFixed(2)}`);
+        });
+        console.log("-".repeat(60));
+
+        // Distribute commissions
+        console.log("\n💳 DISTRIBUTING COMMISSIONS...");
+        const results = await distributeCommissions(commissions);
+
+        console.log("\n📊 DISTRIBUTION RESULTS:");
+        console.log(`   ✅ Successful: ${results.successful.length}`);
+        console.log(`   ❌ Failed: ${results.failed.length}`);
+
+        if (results.successful.length > 0) {
+            console.log("\n   Credited:");
+            results.successful.forEach(s => {
+                console.log(`   ✓ ${s.beneficiary_id}: ₹${s.amount.toFixed(2)}`);
+            });
+        }
+
+        if (results.failed.length > 0) {
+            console.log("\n   Failed:");
+            results.failed.forEach(f => {
+                console.log(`   ✗ ${f.beneficiary_id}: ${f.reason}`);
+            });
+        }
+
+        console.log("\n" + "=".repeat(60));
+        console.log("✅ COMMISSION PROCESSING COMPLETED");
+        console.log("=".repeat(60) + "\n");
+
+        return {
+            success: true,
+            message: "Commission processing completed",
+            results,
+        };
+    } catch (error) {
+        console.error("\n" + "=".repeat(60));
+        console.error("❌ COMMISSION PROCESSING ERROR");
+        console.error("=".repeat(60));
+        console.error("Error:", error.message);
+        console.error("Stack:", error.stack);
+        console.error("=".repeat(60) + "\n");
+        return {
+            success: false,
+            message: "Commission processing failed",
+            error: error.message,
+        };
+    }
+};
+
+module.exports = {
+    loadCommissionConfig,
+    saveCommissionConfig,
+    getIntroducerHierarchy,
+    buildIntroducerHierarchy,
+    validateCommissionEligibility,
+    calculateCommissions,
+    distributeCommissions,
+    processTransactionCommission,
+    getAccountTypeName,
+};

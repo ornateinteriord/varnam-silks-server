@@ -51,6 +51,25 @@ const agentSchema = mongoose.Schema(
       type: String,
       default: null,
     },
+    introducer_name: {
+      type: String,
+      default: null,
+    },
+    // Commission tracking
+    commission_eligible: {
+      type: Boolean,
+      default: true,
+    },
+    introducer_hierarchy: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: function (v) {
+          return v.length <= 7;
+        },
+        message: 'Introducer hierarchy cannot exceed 7 levels'
+      }
+    },
     entered_by: {
       type: String,
       default: null,
