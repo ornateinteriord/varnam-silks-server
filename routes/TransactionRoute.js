@@ -17,7 +17,7 @@ router.post('/transfer-money', Authenticated, transferMoney); // /transaction/tr
 router.post('/withdraw-request', Authenticated, requestWithdraw); // /transaction/withdraw-request
 
 // Cashfree Routes
-router.post('/create-order', Authenticated, createPaymentOrder);
+router.post('/create-order', createPaymentOrder);
 router.post("/webhook/cashfree", express.raw({ type: 'application/json' }), handleCashfreeWebhook); // NO AUTH - Cashfree uses signature verification
 router.get('/status/:orderId', Authenticated, checkPaymentStatus);
 

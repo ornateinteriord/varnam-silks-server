@@ -443,6 +443,16 @@ exports.handleCashfreeWebhook = async (req, res) => {
             transaction.payment_data = webhookData.data;
             await transaction.save();
 
+            // Process commission after successful transaction
+            const { processTransactionCommission } = require("../../utils/commissionUtils");
+            const commissionResult = await processTransactionCommission(transaction);
+
+            if (commissionResult.success) {
+                console.log(`✅ Commission processed: ${JSON.stringify(commissionResult.results?.successful?.length || 0)} successful`);
+            } else {
+                console.warn(`⚠️ Commission processing issue: ${commissionResult.message}`);
+            }
+
             console.log(`✅ Payment completed in ${Date.now() - start}ms`);
 
         }
@@ -905,23 +915,23 @@ exports.requestWithdraw = async (req, res) => {
 exports.triggerTestWebhook = async (req, res) => {
     try {
         const { orderId, status } = req.body;
-        
+
         if (!orderId) {
-            return res.status(400).json({ 
-                success: false, 
-                message: "Order ID is required" 
+            return res.status(400).json({
+                success: false,
+                message: "Order ID is required"
             });
         }
 
         // Find the transaction
-        const transaction = await TransactionModel.findOne({ 
-            transaction_id: orderId 
+        const transaction = await TransactionModel.findOne({
+            transaction_id: orderId
         });
 
         if (!transaction) {
-            return res.status(404).json({ 
-                success: false, 
-                message: "Transaction not found" 
+            return res.status(404).json({
+                success: false,
+                message: "Transaction not found"
             });
         }
 
@@ -985,10 +995,10 @@ exports.triggerTestWebhook = async (req, res) => {
 exports.testPaymentStatus = async (req, res) => {
     try {
         const { orderId } = req.params;
-        
+
         // Find transaction
-        const transaction = await TransactionModel.findOne({ 
-            transaction_id: orderId 
+        const transaction = await TransactionModel.findOne({
+            transaction_id: orderId
         });
 
         if (!transaction) {
@@ -1003,7 +1013,7 @@ exports.testPaymentStatus = async (req, res) => {
         transaction.payment_status = "Success";
         transaction.payment_completed_at = new Date();
         transaction.description = `Online Top-up to Account ${transaction.account_number} (Success - Test)`;
-        
+
         await transaction.save();
 
         return res.status(200).json({
