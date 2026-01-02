@@ -4,6 +4,7 @@ const TransactionModel = require("../../models/transaction.model");
 const getUserTransactions = async (req, res) => {
     try {
         const { memberId } = req.params;
+        const { account_type } = req.query;
 
         if (!memberId) {
             return res.status(400).json({
@@ -12,12 +13,16 @@ const getUserTransactions = async (req, res) => {
             });
         }
 
-        // Find all transactions for this member
-        const transactions = await TransactionModel.find({
-            member_id: memberId
-        })
-            .sort({ createdAt: -1 })
-            .select('transaction_id transaction_date account_number transaction_type description credit debit balance status reference_no');
+        // Build query filter
+        const filter = { member_id: memberId };
+        if (account_type) {
+            filter.account_type = account_type;
+        }
+
+        // Find all transactions for this member (optionally filtered by account type)
+        const transactions = await TransactionModel.find(filter)
+            .sort({ transaction_date: -1 })
+            .select('transaction_id transaction_date account_number account_type transaction_type description credit debit balance status reference_no');
 
         res.status(200).json({
             success: true,
