@@ -825,11 +825,17 @@ exports.transferMoney = async (req, res) => {
 // Withdraw Request
 // ==========================================
 
-// Request money withdrawal
+// Request money withdrawal with instant processing (if KYC beneficiary exists)
 exports.requestWithdraw = async (req, res) => {
     const AccountsModel = require("../../models/accounts.model");
     const MemberModel = require("../../models/member.model");
     const WithdrawRequestModel = require("../../models/withdrawRequest.model");
+    const TransactionModel = require("../../models/transaction.model");
+    const generateTransactionId = require("../../utils/generateTransactionId");
+    const axios = require("axios");
+
+    let account; // Declare at function scope for error handling
+    let originalBalance; // For rollback if needed
 
     try {
         const {
@@ -837,10 +843,7 @@ exports.requestWithdraw = async (req, res) => {
             account_id,
             account_no,
             account_type,
-            amount,
-            bank_account_number,
-            ifsc_code,
-            account_holder_name
+            amount
         } = req.body;
 
         // Validate input
@@ -848,13 +851,6 @@ exports.requestWithdraw = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Member ID, account details, and amount are required"
-            });
-        }
-
-        if (!bank_account_number || !ifsc_code || !account_holder_name) {
-            return res.status(400).json({
-                success: false,
-                message: "Bank account details (account number, IFSC code, account holder name) are required"
             });
         }
 
@@ -880,6 +876,24 @@ exports.requestWithdraw = async (req, res) => {
             return res.status(403).json({
                 success: false,
                 message: "Member account is not active. Cannot process withdrawal request."
+            });
+        }
+
+        // Check KYC Status
+        if (member.kycStatus !== "APPROVED") {
+            return res.status(403).json({
+                success: false,
+                message: "KYC verification required. Please complete KYC before requesting withdrawal.",
+                kycStatus: member.kycStatus
+            });
+        }
+
+        // Check Beneficiary Status
+        if (member.beneficiaryStatus !== "CREATED" || !member.beneficiaryId) {
+            return res.status(403).json({
+                success: false,
+                message: "Beneficiary not created. Please contact support or resubmit KYC.",
+                beneficiaryStatus: member.beneficiaryStatus
             });
         }
 
@@ -915,49 +929,175 @@ exports.requestWithdraw = async (req, res) => {
             });
         }
 
-        // Generate unique withdraw request ID
-        const withdrawRequestId = `WR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        console.log("💸 Processing instant withdrawal...");
+        console.log(`   Member: ${member.name} (${member.member_id})`);
+        console.log(`   Beneficiary ID: ${member.beneficiaryId}`);
+        console.log(`   Amount: ₹${amount}`);
 
-        // Create withdraw request
-        const withdrawRequest = new WithdrawRequestModel({
+        // Generate unique IDs
+        const withdrawRequestId = `WR-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        const transferId = `TRANSFER_${Date.now()}`;
+
+        // Get Cashfree payout base URL - V2 APIS USE DIFFERENT BASE URLS!
+        const CASHFREE_PAYOUT_BASE_URL = process.env.PAYMENT_MODE === 'PRODUCTION'
+            ? 'https://api.cashfree.com/payout'  // V2 Production
+            : 'https://sandbox.cashfree.com/payout';  // V2 Sandbox
+
+        console.log("🔐 Cashfree Payout V2 Auth (Direct API Keys)");
+        console.log(`   Base URL: ${CASHFREE_PAYOUT_BASE_URL}`);
+        console.log(`   Client ID: ${process.env.CI_APP_ID}`);
+        console.log(`   Secret Key: ${process.env.CI_SECRET_KEY ? '***' + process.env.CI_SECRET_KEY.slice(-4) : 'NOT SET'}`);
+
+        // V2 API uses direct client credentials, no token needed!
+        // Initiate payout transfer using V2 API
+        console.log("💰 Initiating payout transfer with V2 API...");
+
+        // Log the full request for debugging
+        console.log("📤 Transfer Request:");
+        console.log(`   URL: ${CASHFREE_PAYOUT_BASE_URL}/transfers`);
+
+        // V2 API requires FULL beneficiary details inline, not just beneId
+        const transferPayload = {
+            transfer_id: transferId,
+            transfer_amount: amount,
+            transfer_mode: "banktransfer",
+            beneficiary_details: {
+                beneficiary_name: member.name,
+                beneficiary_instrument_details: {
+                    bank_account_number: member.account_number, // ✅
+                    bank_ifsc: member.ifsc_code                  // ✅ FIXED KEY
+                },
+                email: member.emailid || "noemail@example.com",
+                phone: member.contactno
+            },
+            remarks: `Withdrawal for account ${account_no}`
+        };
+
+
+        console.log(`   Payload:`, JSON.stringify(transferPayload, null, 2));
+
+        const transferResponse = await axios.post(
+            `${CASHFREE_PAYOUT_BASE_URL}/transfers`,  // V2 API endpoint
+            transferPayload,
+            {
+                headers: {
+                    "X-Client-Id": process.env.CI_APP_ID,
+                    "X-Client-Secret": process.env.CI_SECRET_KEY,
+                    "Content-Type": "application/json",
+                    "x-api-version": "2024-01-01",  // Required for V2 API
+                    "X-Cf-Signature": ""  // Optional signature
+                },
+            }
+        );
+
+        console.log(`✅ Payout response:`, transferResponse.data);
+
+        // Check if payout was successful
+        if (transferResponse.data.status === "ERROR") {
+            console.error("❌ Cashfree payout failed:", transferResponse.data.message);
+            return res.status(400).json({
+                success: false,
+                message: `Payout failed: ${transferResponse.data.message}`,
+                error: transferResponse.data
+            });
+        }
+
+        // Deduct balance from account (ONLY after payout succeeds)
+        const originalBalance = account.account_amount;
+        account.account_amount -= amount;
+        await account.save();
+        console.log(`✅ Balance deducted: ₹${amount}. New balance: ₹${account.account_amount}`);
+
+        // Generate transaction ID (MUST await!)
+        const transactionId = await generateTransactionId();
+
+        // Create debit transaction
+        const transaction = await TransactionModel.create({
+            transaction_id: transactionId,
+            member_id: member_id,
+            account_number: account_no,
+            account_type: account_type,
+            transaction_type: "Withdrawal",
+            description: `Withdrawal to ${member.bank_name || 'bank'} (${member.account_number?.slice(-4) || 'XXXX'})`,
+            debit: amount,
+            credit: 0,
+            balance: account.account_amount,
+            status: "Completed",
+            reference_no: withdrawRequestId,
+            Name: member.name,
+            mobileno: member.contactno
+        });
+        console.log(`✅ Transaction created: ${transaction.transaction_id}`);
+
+        // Save withdrawal request with payout details
+        const withdrawRequest = await WithdrawRequestModel.create({
             withdraw_request_id: withdrawRequestId,
             member_id: member_id,
             account_id: account_id,
             account_no: account_no,
             account_type: account_type,
             amount: amount,
-            bank_account_number: bank_account_number,
-            ifsc_code: ifsc_code.toUpperCase(),
-            account_holder_name: account_holder_name,
-            status: "Pending",
-            requested_date: new Date()
+            bank_account_number: member.account_number,
+            ifsc_code: member.ifsc_code,
+            account_holder_name: member.name,
+            status: "Completed",  // Instantly completed
+            requested_date: new Date(),
+            processed_date: new Date(),
+            processed_by: "SYSTEM_AUTO",
+            transaction_id: transaction.transaction_id,
+            cashfree_beneficiary_id: member.beneficiaryId,
+            cashfree_transfer_id: transferId,
+            cashfree_transfer_status: transferResponse.data?.status || "SUCCESS"
         });
 
-        await withdrawRequest.save();
+        console.log(`✅ Withdrawal completed: ${withdrawRequestId}`);
 
-        return res.status(201).json({
+        return res.status(200).json({
             success: true,
-            message: "Withdrawal request submitted successfully. It will be processed within 2-3 business days.",
+            message: "Withdrawal processed successfully. Amount will be credited to your bank account within 1-2 business days.",
             data: {
                 withdraw_request_id: withdrawRequestId,
-                member_name: member.name,
-                account_no: account_no,
-                account_type: account_type,
+                transfer_id: transferId,
                 amount: amount,
-                bank_account_number: bank_account_number,
-                ifsc_code: ifsc_code.toUpperCase(),
-                account_holder_name: account_holder_name,
-                status: "Pending",
-                requested_date: withdrawRequest.requested_date
+                bank_account: `****${member.account_number?.slice(-4) || 'XXXX'}`,
+                bank_name: member.bank_name,
+                ifsc_code: member.ifsc_code,
+                status: "Completed",
+                new_balance: account.account_amount,
+                processed_date: new Date()
             }
         });
 
     } catch (error) {
-        console.error("Error in withdraw request:", error);
+        console.error("❌ Withdrawal error:", error.response?.data || error.message);
+        console.error("Error stack:", error.stack);
+
+        // CRITICAL: If error occurred after balance deduction, rollback!
+        // This prevents user losing money if transaction creation fails
+        try {
+            if (account && account.account_amount !== undefined) {
+                // Check if balance was modified
+                const currentBalance = account.account_amount;
+                // Reload account to check if it was saved
+                const freshAccount = await AccountsModel.findOne({ account_no: account_no });
+                if (freshAccount && freshAccount.account_amount !== originalBalance) {
+                    // Balance was deducted, rollback!
+                    console.log("⚠️ Rolling back balance deduction...");
+                    freshAccount.account_amount += amount;
+                    await freshAccount.save();
+                    console.log(`✅ Balance rolled back to: ₹${freshAccount.account_amount}`);
+                }
+            }
+        } catch (rollbackError) {
+            console.error("❌ Rollback failed:", rollbackError.message);
+        }
+
+        const errorMessage = error.response?.data?.message || error.message || "Unknown error occurred";
+
         return res.status(500).json({
             success: false,
-            message: "Failed to process withdrawal request",
-            error: error.message
+            message: "Failed to process withdrawal. Please try again or contact support.",
+            error: errorMessage
         });
     }
 };

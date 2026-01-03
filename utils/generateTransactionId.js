@@ -1,25 +1,20 @@
 const TransactionModel = require("../models/transaction.model");
 
 /**
- * Generate a unique transaction ID
- * Format: TXN000001, TXN000002, etc.
+ * Generate a unique transaction ID using timestamp
+ * Format: TXN_{timestamp}_{random}
  */
 const generateTransactionId = async () => {
-    const lastTransaction = await TransactionModel.findOne()
-        .sort({ createdAt: -1 })
-        .limit(1);
+    // Use timestamp + random to avoid duplicates
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 1000);
+    const newTransactionId = `TXN_${timestamp}_${random}`;
 
-    let newTransactionId = "TXN000001";
-    if (lastTransaction && lastTransaction.transaction_id) {
-        // Extract numeric part from formats like "TXN000001" or "TXN-timestamp"
-        const match = lastTransaction.transaction_id.match(/TXN(\d+)/);
-        if (match) {
-            const lastId = parseInt(match[1]);
-            if (!isNaN(lastId)) {
-                const nextId = lastId + 1;
-                newTransactionId = `TXN${nextId.toString().padStart(6, '0')}`;
-            }
-        }
+    // Verify it doesn't exist (unlikely but safe)
+    const existing = await TransactionModel.findOne({ transaction_id: newTransactionId });
+    if (existing) {
+        // If by chance it exists, add more randomness
+        return `TXN_${timestamp}_${random}_${Math.floor(Math.random() * 10000)}`;
     }
 
     return newTransactionId;
