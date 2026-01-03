@@ -70,12 +70,22 @@ const getMyAccounts = async (req, res) => {
             }
         ]);
 
+        // Calculate total balance across all accounts
+        const totalBalance = accounts.reduce((sum, accountType) => {
+            // Sum all account_amount values in this account type
+            const typeBalance = accountType.accounts.reduce((typeSum, account) => {
+                return typeSum + (account.account_amount || 0);
+            }, 0);
+            return sum + typeBalance;
+        }, 0);
+
         res.status(200).json({
             success: true,
             message: "Member accounts fetched successfully",
             data: {
                 accountTypes: accounts,
-                totalAccounts: accounts.reduce((sum, acc) => sum + acc.count, 0)
+                totalAccounts: accounts.reduce((sum, acc) => sum + acc.count, 0),
+                totalBalance: totalBalance
             }
         });
     } catch (error) {

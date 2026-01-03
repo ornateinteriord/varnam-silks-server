@@ -41,7 +41,6 @@ const commissionSchema = new mongoose.Schema(
         transaction_id: {
             type: String,
             required: true,
-            index: true,
         },
         transaction_date: {
             type: Date,
