@@ -371,23 +371,68 @@ exports.handleCashfreeWebhook = async (req, res) => {
         }
 
         console.log("🔍 Order ID:", orderId);
+        console.log("📋 Webhook Type:", webhookData.type);
 
-        // Find transaction
-        const transaction = await TransactionModel.findOne({ transaction_id: orderId });
+        // Atomically mark transaction as being processed (prevents race conditions from duplicate webhooks)
+        const transaction = await TransactionModel.findOneAndUpdate(
+            {
+                transaction_id: orderId,
+                webhook_processed: { $ne: true }  // Only update if NOT already processed
+            },
+            {
+                $set: {
+                    webhook_processed: true,
+                    webhook_processed_at: new Date()
+                }
+            },
+            { new: true }  // Return the updated document
+        );
+
         if (!transaction) {
-            console.warn("❌ Transaction not found:", orderId);
+            // Either transaction doesn't exist OR already processed
+            const existingTx = await TransactionModel.findOne({ transaction_id: orderId });
+            if (existingTx) {
+                console.log("⚠️ Already processed (duplicate webhook):", orderId);
+            } else {
+                console.warn("❌ Transaction not found:", orderId);
+            }
             return res.status(200).json({ received: true });
         }
 
-        // Check if already processed
-        if (transaction.webhook_processed) {
-            console.log("⚠️ Already processed:", orderId);
-            return res.status(200).json({ received: true });
-        }
+        console.log("✅ Webhook processing started for:", orderId);
 
+        // CRITICAL: Only process balance updates for PAYMENT_SUCCESS_WEBHOOK
+        // Cashfree sends multiple webhook types (SUCCESS, CHARGES, etc.) for same transaction
+        // We only want to credit the account ONCE on SUCCESS webhook
         // Process based on event type
         if (webhookData.type === "PAYMENT_SUCCESS_WEBHOOK") {
             console.log("💰 Processing successful payment...");
+
+            // Use STRONGER atomic check: Update status from Pending to Completed
+            // This ensures only ONE webhook can complete the transaction
+            const statusUpdate = await TransactionModel.findOneAndUpdate(
+                {
+                    transaction_id: orderId,
+                    status: "Pending"  // Only update if still Pending
+                },
+                {
+                    $set: {
+                        status: "Completed",
+                        payment_status: "Success",
+                        payment_completed_at: new Date(),
+                        webhook_processed: true,
+                        webhook_processed_at: new Date()
+                    }
+                },
+                { new: false }  // Return original document before update
+            );
+
+            if (!statusUpdate || statusUpdate.status !== "Pending") {
+                console.log("⚠️ Transaction already completed (duplicate SUCCESS webhook):", orderId);
+                return res.status(200).json({ received: true });
+            }
+
+            console.log("✅ First SUCCESS webhook - proceeding with balance update");
 
             // Amount verification
             const paymentData = webhookData.data?.payment;
@@ -401,8 +446,6 @@ exports.handleCashfreeWebhook = async (req, res) => {
                     transaction.status = "Failed";
                     transaction.payment_status = "Failed";
                     transaction.description = `Amount mismatch: ₹${receivedAmount} vs ₹${expectedAmount}`;
-                    transaction.webhook_processed = true;
-                    transaction.webhook_processed_at = new Date();
                     transaction.payment_failed_at = new Date();
                     await transaction.save();
 
@@ -427,15 +470,17 @@ exports.handleCashfreeWebhook = async (req, res) => {
 
                     transaction.balance = newBalance;
                     console.log(`✅ Account ${account.account_no} credited: ₹${transaction.credit}`);
+
+                    // Calculate and log total balance across all accounts
+                    const allMemberAccounts = allAccounts.filter(acc =>
+                        (acc.member_id == transaction.member_id)
+                    );
+                    const totalBalance = allMemberAccounts.reduce((sum, acc) => sum + (acc.account_amount || 0), 0);
+                    console.log(`💰 Member ${transaction.member_id} total balance across all accounts: ₹${totalBalance}`);
                 }
             }
 
-            // Update transaction
-            transaction.status = "Completed";
-            transaction.payment_status = "Success";
-            transaction.payment_completed_at = new Date();
-            transaction.webhook_processed = true;
-            transaction.webhook_processed_at = new Date();
+
 
             // Store payment details
             if (paymentData) {
@@ -472,8 +517,6 @@ exports.handleCashfreeWebhook = async (req, res) => {
             transaction.status = "Failed";
             transaction.payment_status = "Failed";
             transaction.payment_failed_at = new Date();
-            transaction.webhook_processed = true;
-            transaction.webhook_processed_at = new Date();
             transaction.payment_data = webhookData.data;
             await transaction.save();
 
@@ -482,8 +525,6 @@ exports.handleCashfreeWebhook = async (req, res) => {
         // For other events, just mark as processed
         else {
             console.log("ℹ️ Other webhook event:", webhookData.type);
-            transaction.webhook_processed = true;
-            transaction.webhook_processed_at = new Date();
             await transaction.save();
         }
 
