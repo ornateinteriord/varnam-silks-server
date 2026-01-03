@@ -605,6 +605,156 @@ const getAccountTransactions = async (req, res) => {
     }
 };
 
+// Get accounts for agent assignment with filters and agent details
+const getAccountsForAssignment = async (req, res) => {
+    try {
+        const { page = 1, limit = 10, account_type, account_no } = req.query;
+        const AgentModel = require("../../../models/agent.model");
+
+        // Build filter object
+        const filter = {
+            status: { $nin: ["closed", "inactive"] } // Only active/pending accounts
+        };
+
+        if (account_type) {
+            filter.account_type = account_type;
+        }
+        if (account_no) {
+            filter.account_no = { $regex: account_no, $options: "i" };
+        }
+
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+
+        const accounts = await AccountsModel.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const totalAccounts = await AccountsModel.countDocuments(filter);
+
+        // Fetch member, account group, and agent details for each account
+        const accountsWithDetails = await Promise.all(
+            accounts.map(async (account) => {
+                const accountObj = account.toObject();
+
+                // Fetch member details
+                if (accountObj.member_id) {
+                    const member = await MemberModel.findOne(
+                        { member_id: accountObj.member_id },
+                        { name: 1, contactno: 1, emailid: 1, address: 1, _id: 0 }
+                    );
+
+                    if (member) {
+                        accountObj.memberDetails = {
+                            name: member.name,
+                            contactno: member.contactno,
+                            emailid: member.emailid,
+                            address: member.address
+                        };
+                    }
+                }
+
+                // Fetch account group details to get account_type_name
+                if (accountObj.account_type) {
+                    const accountGroup = await AccountGroupModel.findOne(
+                        { account_group_id: accountObj.account_type },
+                        { account_group_name: 1, _id: 0 }
+                    );
+
+                    if (accountGroup) {
+                        accountObj.account_type_name = accountGroup.account_group_name;
+                    }
+                }
+
+                // Fetch agent details if assigned_to exists
+                if (accountObj.assigned_to) {
+                    const agent = await AgentModel.findOne(
+                        { agent_id: accountObj.assigned_to },
+                        { agent_id: 1, name: 1, _id: 0 }
+                    );
+
+                    if (agent) {
+                        accountObj.agentDetails = {
+                            agent_id: agent.agent_id,
+                            name: agent.name
+                        };
+                    }
+                }
+
+                return accountObj;
+            })
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Accounts for assignment fetched successfully",
+            data: accountsWithDetails,
+            pagination: {
+                total: totalAccounts,
+                page: parseInt(page),
+                limit: parseInt(limit),
+                totalPages: Math.ceil(totalAccounts / parseInt(limit))
+            }
+        });
+    } catch (error) {
+        console.error("Error fetching accounts for assignment:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch accounts for assignment",
+            error: error.message
+        });
+    }
+};
+
+// Update account assignment (assigned_to field)
+const updateAccountAssignment = async (req, res) => {
+    try {
+        const { accountId } = req.params;
+        const { assigned_to } = req.body;
+        const AgentModel = require("../../../models/agent.model");
+
+        // Find the account
+        const account = await AccountsModel.findOne({ account_id: accountId });
+        if (!account) {
+            return res.status(404).json({
+                success: false,
+                message: "Account not found"
+            });
+        }
+
+        // Validate agent exists if assigned_to is provided
+        if (assigned_to) {
+            const agent = await AgentModel.findOne({ agent_id: assigned_to });
+            if (!agent) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Agent not found"
+                });
+            }
+        }
+
+        // Update the assigned_to field
+        const updatedAccount = await AccountsModel.findOneAndUpdate(
+            { account_id: accountId },
+            { $set: { assigned_to: assigned_to || null } },
+            { new: true, runValidators: true }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: assigned_to ? "Agent assigned successfully" : "Agent assignment removed",
+            data: updatedAccount
+        });
+    } catch (error) {
+        console.error("Error updating account assignment:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to update account assignment",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getInterestsByAccountGroup,
     createAccount,
@@ -615,5 +765,7 @@ module.exports = {
     getAccountGroups,
     getPreMaturityAccounts,
     getPostMaturityAccounts,
-    getAccountTransactions
+    getAccountTransactions,
+    getAccountsForAssignment,
+    updateAccountAssignment
 };
