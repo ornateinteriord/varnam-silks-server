@@ -1,5 +1,7 @@
 const AgentModel = require("../../../models/agent.model");
 const UserModel = require("../../../models/user.model");
+const { sendMail } = require("../../../utils/EmailService");
+const { generateWelcomeEmail } = require("../../../utils/emailTemplates");
 
 // Create a new agent
 const createAgent = async (req, res) => {
@@ -94,11 +96,25 @@ const createAgent = async (req, res) => {
                 user_status: "active"
             });
 
-            console.log(`User created successfully for agent ${newAgentId}`);
+            console.log(`✅ User created successfully for agent ${newAgentId}`);
         } catch (userError) {
-            console.error("Error creating user entry:", userError);
+            console.error("❌ Error creating user entry:", userError);
             // Don't fail the agent creation if user creation fails
             // Just log the error
+        }
+
+        // 📧 Send welcome email if email provided
+        if (emailid) {
+            try {
+                const emailTemplate = generateWelcomeEmail(name, newAgentId, mobile, 'Agent');
+                await sendMail(emailid, emailTemplate.subject, emailTemplate.html, emailTemplate.text);
+                console.log(`✅ Welcome email sent to ${emailid}`);
+            } catch (emailError) {
+                console.error(`❌ Error sending welcome email to ${emailid}:`, emailError.message);
+                // Don't fail agent creation if email fails
+            }
+        } else {
+            console.log(`ℹ️ No email provided for agent ${newAgentId}, skipping welcome email`);
         }
 
         res.status(201).json({

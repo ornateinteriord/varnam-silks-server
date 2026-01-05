@@ -1,6 +1,8 @@
 const MemberModel = require("../../../models/member.model");
 const UserModel = require("../../../models/user.model");
 const { addMemberHierarchy } = require("../../../utils/hierarchyHelper");
+const { sendMail } = require("../../../utils/EmailService");
+const { generateWelcomeEmail } = require("../../../utils/emailTemplates");
 
 // Create a new member
 const createMember = async (req, res) => {
@@ -95,6 +97,7 @@ const createMember = async (req, res) => {
         const newMember = await MemberModel.create(memberDataWithHierarchy);
 
         // Create user entry automatically
+        const userPassword = contactno; // Password is contact number
         try {
             // Find the last user_id to auto-increment
             const lastUser = await UserModel.findOne()
@@ -114,17 +117,31 @@ const createMember = async (req, res) => {
                 user_id: newMemberId,
                 user_name: newMemberId,
                 reference_id: newMemberId,
-                password: contactno,
+                password: userPassword,
                 user_role: "USER",
                 branch_code: branch_id,
                 user_status: "active"
             });
 
-            console.log(`User created successfully for member ${newMemberId}`);
+            console.log(`✅ User created successfully for member ${newMemberId}`);
         } catch (userError) {
-            console.error("Error creating user entry:", userError);
+            console.error("❌ Error creating user entry:", userError);
             // Don't fail the member creation if user creation fails
             // Just log the error
+        }
+
+        // 📧 Send welcome email if email provided
+        if (emailid) {
+            try {
+                const emailTemplate = generateWelcomeEmail(name, newMemberId, userPassword, 'Member');
+                await sendMail(emailid, emailTemplate.subject, emailTemplate.html, emailTemplate.text);
+                console.log(`✅ Welcome email sent to ${emailid}`);
+            } catch (emailError) {
+                console.error(`❌ Error sending welcome email to ${emailid}:`, emailError.message);
+                // Don't fail member creation if email fails
+            }
+        } else {
+            console.log(`ℹ️ No email provided for member ${newMemberId}, skipping welcome email`);
         }
 
         res.status(201).json({
