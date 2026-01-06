@@ -202,7 +202,10 @@ app.get("/cors-test", (_req, res) => {
 //        📌 API ROUTES
 // ======================================================
 
-// Middleware to ensure DB connection for Vercel serverless (must be before routes)
+// Note: Middleware below is for Vercel serverless ONLY - causes Railway crashes
+// Railway uses persistent DB connection established at server startup
+// Un-comment this ONLY if deploying to Vercel serverless
+/*
 app.use(async (req, res, next) => {
   try {
     await connectDB();
@@ -216,6 +219,7 @@ app.use(async (req, res, next) => {
     });
   }
 });
+*/
 
 app.use("/auth", AuthRoutes);
 app.use("/admin", AdminRoutes);
