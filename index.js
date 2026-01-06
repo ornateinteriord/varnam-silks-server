@@ -263,15 +263,7 @@ app.use((err, req, res, next) => {
 // ======================================================
 //        🚀 Start Server (with DB connection)
 // ======================================================
-// ⚠️ RAILWAY FIX: Use environment PORT with NO fallback
-const PORT = Number(process.env.PORT);
-
-// Validate PORT is set by Railway (critical for deployment)
-if (!PORT) {
-  console.error("❌ PORT is not defined by Railway/environment");
-  console.error("⚠️ This is REQUIRED for Railway deployment");
-  process.exit(1);
-}
+const PORT = process.env.PORT || 5051;
 
 // Connect to database before starting server (for local development)
 const startServer = async () => {
@@ -279,7 +271,6 @@ const startServer = async () => {
     // Ensure MongoDB is connected before accepting requests
     await connectDB();
 
-    // ⚠️ CRITICAL: Bind to 0.0.0.0 for Railway (not localhost)
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🌍 Server running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
