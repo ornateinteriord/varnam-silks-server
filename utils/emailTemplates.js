@@ -467,6 +467,61 @@ const generateWithdrawalEmail = (name, memberId, transactionId, accountNo, amoun
     };
 };
 
+// 8. Welcome Email (Member/Agent Registration)
+const generateWelcomeEmail = (name, userId, password, role = 'Member') => {
+    const content = `
+    <p style="color: #374151; font-size: 16px; line-height: 1.6;">
+      Dear <strong style="color: #6567df;">${name}</strong>,
+    </p>
+
+    ${getSuccessAlert(`Welcome to Manipal Society! Your ${role.toLowerCase()} account has been created.`)}
+
+    <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+      Your account has been successfully registered with Manipal Society. Below are your login credentials:
+    </p>
+
+    ${getInfoBox('Login Credentials', [
+        { label: `${role} ID`, value: `<strong style="color: #6567df; font-size: 18px;">${userId}</strong>` },
+        { label: 'Password', value: `<strong style="color: #6567df; font-size: 18px;">${password}</strong>` },
+        { label: 'Registration Date', value: new Date().toLocaleDateString('en-IN', { dateStyle: 'full' }) }
+    ])}
+
+    <p style="color: #374151; font-size: 15px; line-height: 1.6;">
+      <strong>Getting Started:</strong>
+    </p>
+
+    <ul style="color: #374151; font-size: 15px; line-height: 1.8; padding-left: 20px;">
+      <li>Login using your ${role} ID and password</li>
+      <li>Complete your KYC verification to activate all features</li>
+      <li>Change your password after first login for security</li>
+      <li>Explore our banking services and investment options</li>
+    </ul>
+
+    <div style="text-align: center; margin: 30px 0;">
+      <p style="background: linear-gradient(135deg, #6567df 0%, #7e22ce 100%); 
+                 color: white; 
+                 padding: 14px 32px; 
+                 border-radius: 8px; 
+                 display: inline-block;
+                 font-weight: 600;
+                 box-shadow: 0 4px 12px rgba(101, 103, 223, 0.3);">
+        🎉 Welcome to MSI Family!
+      </p>
+    </div>
+
+    <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+      Best regards,<br/>
+      <strong style="color: #6567df;">Manipal Society Team</strong>
+    </p>
+  `;
+
+    return {
+        subject: `MSI - Welcome! Your ${role} Account is Ready`,
+        html: getEmailWrapper(content),
+        text: `Dear ${name}, Welcome to Manipal Society! Your ${role} account has been created. ${role} ID: ${userId}, Password: ${password}. Please login and change your password immediately.`
+    };
+};
+
 module.exports = {
     generateKYCSubmittedEmail,
     generateKYCApprovedEmail,
@@ -474,5 +529,6 @@ module.exports = {
     generatePasswordUpdatedEmail,
     generateAccountCreatedEmail,
     generateTransactionEmail,
-    generateWithdrawalEmail
+    generateWithdrawalEmail,
+    generateWelcomeEmail
 };

@@ -514,10 +514,26 @@ exports.handleCashfreeWebhook = async (req, res) => {
         else if (webhookData.type === "PAYMENT_FAILED_WEBHOOK") {
             console.log("❌ Processing failed payment...");
 
+            // Extract failure reason from Cashfree webhook
+            const paymentData = webhookData.data?.payment;
+            const failureReason = paymentData?.payment_message || "Unknown failure reason";
+
             transaction.status = "Failed";
             transaction.payment_status = "Failed";
             transaction.payment_failed_at = new Date();
             transaction.payment_data = webhookData.data;
+            transaction.description = `Payment Failed: ${failureReason}`;
+
+            // Log detailed failure information
+            console.log("💔 Failure Reason:", failureReason);
+            if (paymentData) {
+                console.log("🚫 Payment Details:", {
+                    payment_message: paymentData.payment_message,
+                    bank_reference: paymentData.bank_reference,
+                    payment_method: paymentData.payment_method
+                });
+            }
+
             await transaction.save();
 
             console.log(`✅ Failed payment processed in ${Date.now() - start}ms`);

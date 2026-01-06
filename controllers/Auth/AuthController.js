@@ -100,6 +100,8 @@ const recoverPassword = async (req, res) => {
   }
 };
 
+const { generatePasswordUpdatedEmail } = require("../../utils/emailTemplates");
+
 const resetPassword = async (req, res) => {
   try {
     const { emailid, password, otp } = req.body;
@@ -122,6 +124,16 @@ const resetPassword = async (req, res) => {
 
       user.password = password;
       await user.save();
+
+      // 📧 Send password update email notification
+      try {
+        const emailTemplate = generatePasswordUpdatedEmail(user.name, user.member_id);
+        await sendMail(user.emailid, emailTemplate.subject, emailTemplate.html, emailTemplate.text);
+        console.log(`✅ Password update email sent to ${user.emailid}`);
+      } catch (emailError) {
+        console.error(`❌ Error sending password update email:`, emailError.message);
+        // Don't fail password reset if email fails
+      }
 
       return res.json({
         success: true,

@@ -18,7 +18,8 @@ router.post('/withdraw-request', Authenticated, requestWithdraw); // /transactio
 
 // Cashfree Routes
 router.post('/create-order', createPaymentOrder);
-router.post("/webhook/cashfree", express.raw({ type: 'application/json' }), handleCashfreeWebhook); // NO AUTH - Cashfree uses signature verification
+// ⚠️ WEBHOOK ROUTE REMOVED - Handled in index.js (BEFORE other middleware for raw body)
+// Webhook is at: POST /transaction/webhook/cashfree (defined in index.js line 29)
 router.get('/status/:orderId', Authenticated, checkPaymentStatus);
 
 // Test Webhook Routes
