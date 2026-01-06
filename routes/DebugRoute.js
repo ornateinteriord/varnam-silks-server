@@ -186,4 +186,50 @@ router.get("/transaction-debug/:transactionId", async (req, res) => {
     }
 });
 
+// ==========================================
+// TEST WEBHOOK ENDPOINT (for Railway debugging)
+// ==========================================
+router.post("/test-webhook", async (req, res) => {
+    try {
+        console.log("🧪 TEST WEBHOOK RECEIVED");
+        console.log("📍 Path:", req.path);
+        console.log("📦 Body:", JSON.stringify(req.body, null, 2));
+        console.log("🏷️ Headers:", JSON.stringify(req.headers, null, 2));
+
+        return res.status(200).json({
+            success: true,
+            message: "Test webhook received successfully",
+            received_data: req.body,
+            timestamp: new Date().toISOString(),
+            environment: process.env.NODE_ENV || "development"
+        });
+    } catch (error) {
+        console.error("❌ Test webhook error:", error.message);
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Webhook status check endpoint
+router.get("/webhook-status", (req, res) => {
+    const cashfreeConfig = require("../utils/cashfree");
+
+    res.json({
+        status: "operational",
+        timestamp: new Date().toISOString(),
+        environment: process.env.NODE_ENV || "development",
+        webhook_routes: [
+            "/transaction/webhook/cashfree",
+            "/api/transaction/webhook/cashfree"
+        ],
+        cashfree_config: {
+            base_url: cashfreeConfig.CASHFREE_BASE_URL,
+            is_production: cashfreeConfig.IS_PRODUCTION,
+            webhook_secret_configured: !!cashfreeConfig.WEBHOOK_SECRET
+        }
+    });
+});
+
 module.exports = router;

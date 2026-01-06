@@ -499,14 +499,20 @@ exports.handleCashfreeWebhook = async (req, res) => {
             transaction.payment_data = webhookData.data;
             await transaction.save();
 
-            // Process commission after successful transaction
-            const { processTransactionCommission } = require("../../utils/commissionUtils");
-            const commissionResult = await processTransactionCommission(transaction);
+            // Process commission after successful transaction (with error handling)
+            try {
+                const { processTransactionCommission } = require("../../utils/commissionUtils");
+                const commissionResult = await processTransactionCommission(transaction);
 
-            if (commissionResult.success) {
-                console.log(`✅ Commission processed: ${JSON.stringify(commissionResult.results?.successful?.length || 0)} successful`);
-            } else {
-                console.warn(`⚠️ Commission processing issue: ${commissionResult.message}`);
+                if (commissionResult.success) {
+                    console.log(`✅ Commission processed: ${commissionResult.results?.successful?.length || 0} successful`);
+                } else {
+                    console.warn(`⚠️ Commission processing issue: ${commissionResult.message}`);
+                }
+            } catch (commissionError) {
+                // Don't fail the webhook if commission processing fails
+                console.error(`❌ Commission error (non-critical):`, commissionError.message);
+                console.error(`Stack:`, commissionError.stack);
             }
 
             console.log(`✅ Payment completed in ${Date.now() - start}ms`);
@@ -549,11 +555,20 @@ exports.handleCashfreeWebhook = async (req, res) => {
 
     } catch (error) {
         console.error("❌ WEBHOOK ERROR:", error.message);
-        // Always return 200 to acknowledge
-        console.log("✅ Webhook processed successfully");
-        return res.status(200).json({ received: true });
+        console.error("❌ Error Stack:", error.stack);
+        console.error("❌ Error Details:", {
+            name: error.name,
+            message: error.message,
+            code: error.code
+        });
+        // Always return 200 to acknowledge (prevents Cashfree retries)
+        return res.status(200).json({
+            received: true,
+            error: error.message,
+            note: "Webhook received but processing failed"
+        });
     } finally {
-        console.log("🔚 WEBHOOK PROCESSING COMPLETED\n");
+        console.log(`🔚 WEBHOOK PROCESSING COMPLETED (${Date.now() - start}ms)\n`);
     }
 };
 

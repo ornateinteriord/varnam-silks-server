@@ -26,17 +26,38 @@ const app = express();
 // This route needs raw body for signature verification
 const { handleCashfreeWebhook } = require("./controllers/Transaction/TransactionController");
 
-app.post('/transaction/webhook/cashfree',
+// Webhook middleware with error handling
+const webhookMiddleware = [
   express.raw({ type: 'application/json' }),
   (req, res, next) => {
-    // Store raw body for signature verification
-    req.rawBody = req.body.toString('utf8');
-    console.log('🔔 Cashfree Webhook Received');
-    console.log('Headers:', JSON.stringify(req.headers, null, 2));
-    next();
+    try {
+      // Store raw body for signature verification
+      req.rawBody = req.body ? req.body.toString('utf8') : '';
+      console.log('🔔 Cashfree Webhook Received');
+      console.log('📍 Path:', req.path);
+      console.log('🏷️ Headers:', JSON.stringify(req.headers, null, 2));
+      console.log('📦 Raw Body Length:', req.rawBody?.length || 0);
+      next();
+    } catch (error) {
+      console.error('❌ Webhook Middleware Error:', error.message);
+      res.status(500).json({ error: 'Webhook processing failed', message: error.message });
+    }
   },
-  handleCashfreeWebhook
-);
+  async (req, res, next) => {
+    try {
+      await handleCashfreeWebhook(req, res, next);
+    } catch (error) {
+      console.error('❌ Webhook Handler Error:', error.message);
+      console.error('Stack:', error.stack);
+      // Always return 200 to Cashfree to prevent retries
+      res.status(200).json({ received: true, error: error.message });
+    }
+  }
+];
+
+// Support both /api prefix (Railway/Vercel) and without prefix (local)
+app.post('/transaction/webhook/cashfree', ...webhookMiddleware);
+app.post('/api/transaction/webhook/cashfree', ...webhookMiddleware);
 
 // ======================================================
 //        🛡️ CORS CONFIG (Fixed for Vercel)
