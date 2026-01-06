@@ -31,8 +31,10 @@ const WEBHOOK_SECRET = IS_PRODUCTION
  * Validation
  */
 if (!CASHFREE_APP_ID || !CASHFREE_SECRET_KEY) {
-    console.error("❌ Cashfree credentials missing");
-    process.exit(1);
+    console.warn("⚠️ Cashfree credentials missing - Payment functionality will be disabled");
+    // Don't exit - just log warning and continue
+} else {
+    console.log("✅ Cashfree credentials found");
 }
 
 /**

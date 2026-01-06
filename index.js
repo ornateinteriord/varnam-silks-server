@@ -198,6 +198,19 @@ app.get("/cors-test", (_req, res) => {
   });
 });
 
+// Webhook status endpoint (browser-friendly GET request)
+app.get("/transaction/webhook/cashfree/status", (_req, res) => {
+  res.json({
+    status: "ready",
+    message: "Cashfree webhook endpoint is configured and ready",
+    endpoint: "/transaction/webhook/cashfree",
+    method: "POST",
+    note: "This endpoint only accepts POST requests from Cashfree with valid signatures",
+    webhookSecretConfigured: !!process.env.CASHFREE_WEBHOOK_SECRET,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // ======================================================
 //        📌 API ROUTES
 // ======================================================
@@ -235,8 +248,20 @@ app.use("/debug", DebugRoutes);
 // ======================================================
 //        🏠 HOME
 // ======================================================
-app.get("/", (_req, res) => {
-  res.send(`🚀 ${process.env.PROJECT_NAME || "MSCS Server"} Running Securely`);
+app.get("/", (req, res) => {
+  console.log('🏠 Root endpoint hit - server is responding');
+  res.status(200).send(`🚀 ${process.env.PROJECT_NAME || "MSCS Server"} Running Securely - Environment: ${process.env.NODE_ENV || "development"}`);
+});
+
+// Health check endpoint for Railway
+app.get("/health-check", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+    message: "Server is running and responding to requests"
+  });
 });
 
 // ======================================================
@@ -265,20 +290,24 @@ app.use((err, req, res, next) => {
 // ======================================================
 const PORT = process.env.PORT || 5051;
 
-// Connect to database before starting server (for local development)
+// Connect to database before starting server (for Railway/production)
 const startServer = async () => {
   try {
+    console.log('🔄 Attempting to connect to MongoDB...');
     // Ensure MongoDB is connected before accepting requests
     await connectDB();
+    console.log('✅ MongoDB connected successfully');
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🌍 Server running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🔗 Webhook endpoints ready!`);
       console.log(`🏠 Listening on 0.0.0.0:${PORT}`);
+      console.log(`📡 Server is ready to receive requests`);
     });
   } catch (error) {
-    console.error("Failed to start server:", error);
+    console.error("❌ Failed to start server:", error.message);
+    console.error("Stack trace:", error.stack);
     process.exit(1);
   }
 };
@@ -287,6 +316,10 @@ const startServer = async () => {
 // Only skip in Vercel serverless environment
 if (process.env.VERCEL !== 'true') {
   console.log('🚀 Starting server...');
+  console.log('🔧 Environment:', process.env.NODE_ENV || 'development');
+  console.log('🔌 PORT:', process.env.PORT || '5051');
+  console.log('🌐 MONGO_URI exists:', !!process.env.MONGO_URI);
+  console.log('💳 CASHFREE credentials exist:', !!process.env.CASHFREE_SANDBOX_APP_ID || !!process.env.CASHFREE_PRODUCTION_APP_ID);
   startServer();
 } else {
   console.log('⚡ Vercel serverless mode - skipping server start');

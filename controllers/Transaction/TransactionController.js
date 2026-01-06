@@ -206,10 +206,19 @@ exports.createPaymentOrder = async (req, res) => {
             },
             order_meta: {
                 return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/user/wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
-                notify_url: `${process.env.BACKEND_URL || 'http://localhost:5051'}/api/transaction/webhook/cashfree`  // Vercel API route
+                notify_url: `${process.env.BACKEND_URL || (process.env.RAILWAY_STATIC_URL ? process.env.RAILWAY_STATIC_URL : 'http://localhost:5051')}/api/transaction/webhook/cashfree`  // Railway/production API route
             }
         };
 
+
+        // Check if Cashfree credentials are available
+        if (!cashfreeConfig.CASHFREE_APP_ID || !cashfreeConfig.CASHFREE_SECRET_KEY) {
+            console.error("❌ Cashfree credentials not configured");
+            return res.status(500).json({
+                success: false,
+                message: "Payment gateway not configured. Contact administrator."
+            });
+        }
 
         // Log the request being sent to Cashfree
         console.log("=== Creating Cashfree Order ===");
@@ -319,6 +328,15 @@ exports.handleCashfreeWebhook = async (req, res) => {
         console.log("🟢 CASHFREE WEBHOOK RECEIVED =====================");
         console.log("📤 Webhook Raw Body:", req.rawBody ? req.rawBody.substring(0, 200) + "..." : "NO RAW BODY");
         console.log("🏷️ Headers:", JSON.stringify(req.headers, null, 2));
+
+        // Check if Cashfree credentials are available
+        if (!cashfreeConfig.CASHFREE_APP_ID || !cashfreeConfig.CASHFREE_SECRET_KEY) {
+            console.warn("⚠️ Cashfree credentials not configured - webhook processing may be affected");
+            // Continue processing but skip signature verification in dev
+            if (process.env.NODE_ENV !== "development") {
+                return res.status(500).json({ error: "Payment gateway not configured" });
+            }
+        }
 
         // Get webhook details - using WEBHOOK_SECRET for signature verification
         const signature = req.headers["x-webhook-signature"]; // Cashfree uses x-webhook-signature
@@ -578,6 +596,15 @@ exports.checkPaymentStatus = async (req, res) => {
 
     try {
         const { orderId } = req.params;
+
+        // Check if Cashfree credentials are available
+        if (!cashfreeConfig.CASHFREE_APP_ID || !cashfreeConfig.CASHFREE_SECRET_KEY) {
+            console.error("❌ Cashfree credentials not configured");
+            return res.status(500).json({
+                success: false,
+                message: "Payment gateway not configured. Cannot check payment status."
+            });
+        }
 
         // Direct axios call to Cashfree API
         const response = await axios.get(`${cashfreeConfig.CASHFREE_BASE_URL}/pg/orders/${orderId}/payments`, {
@@ -974,6 +1001,15 @@ exports.requestWithdraw = async (req, res) => {
         const CASHFREE_PAYOUT_BASE_URL = process.env.PAYMENT_MODE === 'PRODUCTION'
             ? 'https://api.cashfree.com/payout'  // V2 Production
             : 'https://sandbox.cashfree.com/payout';  // V2 Sandbox
+
+        // Check if Cashfree payout credentials are available
+        if (!process.env.CI_APP_ID || !process.env.CI_SECRET_KEY) {
+            console.error("❌ Cashfree payout credentials not configured");
+            return res.status(500).json({
+                success: false,
+                message: "Payout gateway not configured. Contact administrator."
+            });
+        }
 
         console.log("🔐 Cashfree Payout V2 Auth (Direct API Keys)");
         console.log(`   Base URL: ${CASHFREE_PAYOUT_BASE_URL}`);
