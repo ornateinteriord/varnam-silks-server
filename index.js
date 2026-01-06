@@ -267,8 +267,10 @@ const startServer = async () => {
     // Ensure MongoDB is connected before accepting requests
     await connectDB();
 
-    app.listen(PORT, () => {
-      console.log(`🌍 Server running on port http://localhost:${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🌍 Server running on port ${PORT}`);
+      console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🔗 Webhook endpoints ready!`);
     });
   } catch (error) {
     console.error("Failed to start server:", error);
@@ -276,9 +278,13 @@ const startServer = async () => {
   }
 };
 
-// Start server only if not in Vercel serverless environment
-if (!process.env.VERCEL) {
+// Always start server (Railway, local, production)
+// Only skip in Vercel serverless environment
+if (process.env.VERCEL !== 'true') {
+  console.log('🚀 Starting server...');
   startServer();
+} else {
+  console.log('⚡ Vercel serverless mode - skipping server start');
 }
 
 // Export for Vercel serverless
