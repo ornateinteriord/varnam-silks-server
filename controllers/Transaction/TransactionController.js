@@ -206,9 +206,10 @@ exports.createPaymentOrder = async (req, res) => {
             },
             order_meta: {
                 return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/user/wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
-                notify_url: `${process.env.BACKEND_URL || 'http://localhost:5051'}/transaction/webhook/cashfree`  // Use environment variable
+                notify_url: `${process.env.BACKEND_URL || 'http://localhost:5051'}/api/transaction/webhook/cashfree`  // Vercel API route
             }
         };
+
 
         // Log the request being sent to Cashfree
         console.log("=== Creating Cashfree Order ===");
