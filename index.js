@@ -63,43 +63,45 @@ app.post('/api/transaction/webhook/cashfree', ...webhookMiddleware);
 //        🛡️ CORS CONFIG (Fixed for Vercel)
 // ======================================================
 const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  process.env.FRONTEND_URL_DEV,
-  process.env.FRONTEND_URL_PROD,
-  "https://nidhi-ltd.vercel.app",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:3000"
+  process.env.FRONTEND_URL_DEV,      // http://localhost:5173
+  process.env.FRONTEND_URL_PROD,     // https://nidhi-ltd.vercel.app
+  process.env.FRONTEND_URL_RAILWAY,  // https://nidhi-ltd-production.up.railway.app
 ].filter(Boolean);
 
-// Enhanced CORS middleware with better logging
+
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  if (origin) {
-    // Check if origin is allowed
-    const isLocalhost = /^http:\/\/localhost(:\d+)?$/.test(origin);
-    const isNgrok = origin.endsWith("ngrok-free.dev");
-    const isVercel = origin.includes(".vercel.app") || origin.includes(".now.sh");
+  // allow server-to-server & Postman
+  if (!origin) return next();
 
-    if (isLocalhost || isNgrok || isVercel || allowedOrigins.includes(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-    } else {
-      console.warn(`⚠️ CORS NOT ALLOWED for: ${origin}`);
-    }
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+    );
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    );
+  } else {
+    console.warn(`⚠️ CORS NOT ALLOWED for: ${origin}`);
+    return res.status(403).json({
+      error: "CORS Error",
+      origin,
+      allowedOrigins
+    });
   }
 
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
-
-  // Handle preflight requests
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
   }
 
   next();
 });
+
 
 // Alternative CORS configuration (comment out above if this works better)
 const corsOptions = {
