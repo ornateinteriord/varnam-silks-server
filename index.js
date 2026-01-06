@@ -271,7 +271,7 @@ const startServer = async () => {
     // Ensure MongoDB is connected before accepting requests
     await connectDB();
 
-    app.listen(PORT, '0.0.0.0', () => {
+    app.listen(PORT, () => {
       console.log(`🌍 Server running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
       console.log(`🔗 Webhook endpoints ready!`);
