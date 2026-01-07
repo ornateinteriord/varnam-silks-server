@@ -232,14 +232,8 @@ exports.createPaymentOrder = async (req, res) => {
 
         const paymentSessionId = response.data.payment_session_id;
 
-        // Construct the checkout URL using Cashfree's hosted checkout
-        // Format: https://{base}/pg/view/order/{payment_session_id}
-        const checkoutUrl = cashfreeConfig.IS_PRODUCTION
-            ? `https://payments.cashfree.com/pg/view/order/${paymentSessionId}`
-            : `https://sandbox.cashfree.com/pg/view/order/${paymentSessionId}`;
-
         console.log("✅ Payment Session ID:", paymentSessionId);
-        console.log("✅ Checkout URL:", checkoutUrl);
+        console.log("✅ Order ID:", response.data.order_id);
 
         // Create Pending Transaction in DB with account details
         const newTx = new TransactionModel({
@@ -264,11 +258,12 @@ exports.createPaymentOrder = async (req, res) => {
 
         await newTx.save();
 
+        // Return like BICCSL-Server - frontend uses Cashfree JS SDK to open checkout
         return res.status(200).json({
             success: true,
-            checkout_url: checkoutUrl,
-            payment_session_id: paymentSessionId,
             order_id: orderId,
+            payment_session_id: paymentSessionId,
+            cashfree_env: cashfreeConfig.IS_PRODUCTION ? "production" : "sandbox",
             account_no: account_no
         });
 
