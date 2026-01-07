@@ -205,8 +205,8 @@ exports.createPaymentOrder = async (req, res) => {
                 customer_email: email || "customer@example.com"
             },
             order_meta: {
-                return_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/user/wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
-                notify_url: `${process.env.BACKEND_URL || (process.env.RAILWAY_STATIC_URL ? process.env.RAILWAY_STATIC_URL : 'http://localhost:5051')}/api/transaction/webhook/cashfree`  // Railway/production API route
+                return_url: `${process.env.FRONTEND_URL || 'https://nidhi-ltd-production.up.railway.app'}/user/wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
+                notify_url: `${process.env.BACKEND_URL || 'https://intelligent-trust-production.up.railway.app'}/api/transaction/webhook/cashfree`  // Production API route
             }
         };
 
