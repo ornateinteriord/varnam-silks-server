@@ -233,9 +233,10 @@ exports.createPaymentOrder = async (req, res) => {
         const paymentSessionId = response.data.payment_session_id;
 
         // Construct the checkout URL using Cashfree's hosted checkout
+        // Format: https://{base}/pg/view/order/{payment_session_id}
         const checkoutUrl = cashfreeConfig.IS_PRODUCTION
-            ? `https://payments.cashfree.com/order/#${paymentSessionId}`
-            : `https://payments-test.cashfree.com/order/#${paymentSessionId}`;
+            ? `https://payments.cashfree.com/pg/view/order/${paymentSessionId}`
+            : `https://sandbox.cashfree.com/pg/view/order/${paymentSessionId}`;
 
         console.log("✅ Payment Session ID:", paymentSessionId);
         console.log("✅ Checkout URL:", checkoutUrl);
