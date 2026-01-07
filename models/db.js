@@ -13,15 +13,19 @@ const connectDB = async () => {
   try {
     // Serverless-optimized connection options
     const options = {
-      serverSelectionTimeoutMS: 15000, // Increased from default 30s (still reasonable)
+      serverSelectionTimeoutMS: 30000, // Increased timeout for server selection
       socketTimeoutMS: 45000, // Socket timeout
+      connectTimeoutMS: 30000, // Connection timeout
       maxPoolSize: 10, // Connection pool size for serverless
       minPoolSize: 1, // Keep at least 1 connection alive
-      maxIdleTimeMS: 10000, // Close idle connections after 10s
-      retryWrites: true
-      ,
+      maxIdleTimeMS: 30000, // Close idle connections after 30s
+      retryWrites: true,
       retryReads: true,
+      bufferCommands: true, // Buffer commands while connecting
     };
+
+    // Set global mongoose bufferTimeoutMS to prevent "buffering timed out" errors
+    mongoose.set('bufferTimeoutMS', 30000);
 
     console.log("🔄 Connecting to MongoDB...");
     console.log("MONGO_URI exists:", !!process.env.MONGO_URI);
