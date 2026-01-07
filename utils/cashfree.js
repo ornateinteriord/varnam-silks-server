@@ -44,7 +44,7 @@ const CASHFREE_BASE_URL = IS_PRODUCTION
     ? "https://api.cashfree.com"
     : "https://sandbox.cashfree.com";
 
-const X_API_VERSION = "2023-08-01";
+const X_API_VERSION = "2022-09-01";
 
 /**
  * Logs (safe)
@@ -54,6 +54,7 @@ console.log("💳 Cashfree Configuration");
 console.log("ENV:", NODE_ENV);
 console.log("MODE:", IS_PRODUCTION ? "PRODUCTION" : "SANDBOX");
 console.log("BASE URL:", CASHFREE_BASE_URL);
+console.log("API VERSION:", X_API_VERSION);
 console.log("APP ID:", CASHFREE_APP_ID);
 console.log("WEBHOOK SECRET SET:", !!WEBHOOK_SECRET);
 console.log("================================");

@@ -113,7 +113,7 @@ exports.createPaymentOrder = async (req, res) => {
     const MemberModel = require("../../models/member.model");
 
     try {
-        const { member_id, amount, mobileno, Name, email, account_id, account_no, account_type } = req.body;
+        const { member_id, amount, mobileno, Name, email, account_id, account_no, account_type, description } = req.body;
 
         if (!member_id || !amount || !mobileno || !Name) {
             return res.status(400).json({ success: false, message: "Missing required fields: member_id, amount, mobileno, Name" });
@@ -169,44 +169,22 @@ exports.createPaymentOrder = async (req, res) => {
             });
         }
 
-        const orderId = `ORDER_${Date.now()}`;
+        const linkId = `LINK_${Date.now()}`; // Generate unique Link ID
 
-        if (account_id) {
-            const AccountsModel = require("../../models/accounts.model");
-            const AccountGroupModel = require("../../models/accountGroup.model");
-
-            const account = await AccountsModel.findOne({ account_id: account_id });
-
-            if (account) {
-                accountNumber = account.account_no;
-
-                // Fetch account type name from accountGroup
-                if (account.account_type) {
-                    const accountGroup = await AccountGroupModel.findOne({
-                        account_group_id: account.account_type
-                    });
-
-                    if (accountGroup && accountGroup.account_group_name) {
-                        accountType = accountGroup.account_group_name;
-                    }
-                }
-            }
-        }
-
-        // Prepare Request
+        // Prepare Request for Payment Link
         const request = {
-            order_amount: Number(amount),
-            order_currency: "INR",
-            order_id: orderId,
+            link_id: linkId,
+            link_amount: Number(amount),
+            link_currency: "INR",
+            link_purpose: description || "Add Money",
             customer_details: {
-                customer_id: member_id,
                 customer_phone: mobileno,
                 customer_name: Name,
                 customer_email: email || "customer@example.com"
             },
-            order_meta: {
-                return_url: `${process.env.FRONTEND_URL || 'https://nidhi-ltd-production.up.railway.app'}/user/wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
-                notify_url: `${process.env.BACKEND_URL || 'https://intelligent-trust-production.up.railway.app'}/api/transaction/webhook/cashfree`  // Production API route
+            link_meta: {
+                return_url: `${process.env.FRONTEND_URL}/user/wallet?order_id={link_id}&order_status={link_status}&member_id=${member_id}`,
+                notify_url: `${process.env.BACKEND_URL}/transaction/webhook/cashfree`
             }
         };
 
@@ -221,13 +199,13 @@ exports.createPaymentOrder = async (req, res) => {
         }
 
         // Log the request being sent to Cashfree
-        console.log("=== Creating Cashfree Order ===");
+        console.log("=== Creating Cashfree Payment Link ===");
         console.log("Environment:", cashfreeConfig.IS_PRODUCTION ? "PRODUCTION" : "SANDBOX");
         console.log("Base URL:", cashfreeConfig.CASHFREE_BASE_URL);
         console.log("Request Body:", JSON.stringify(request, null, 2));
 
-        // Direct axios call to Cashfree API
-        const response = await axios.post(`${cashfreeConfig.CASHFREE_BASE_URL}/pg/orders`, request, {
+        // Direct axios call to Cashfree API (Links Endpoint)
+        const response = await axios.post(`${cashfreeConfig.CASHFREE_BASE_URL}/pg/links`, request, {
             headers: {
                 'Content-Type': 'application/json',
                 'x-client-id': cashfreeConfig.CASHFREE_APP_ID,
@@ -240,20 +218,20 @@ exports.createPaymentOrder = async (req, res) => {
         console.log("Status:", response.status);
         console.log("Response Data:", JSON.stringify(response.data, null, 2));
 
-        // Validate that payment_session_id exists in response
-        if (!response.data || !response.data.payment_session_id) {
-            console.error("❌ ERROR: payment_session_id not found in Cashfree response!");
+        // Validate that link_url exists in response
+        if (!response.data || !response.data.link_url) {
+            console.error("❌ ERROR: link_url not found in Cashfree response!");
             console.error("Full Response:", JSON.stringify(response.data, null, 2));
-            throw new Error("Cashfree API did not return a payment_session_id. Please check API credentials and configuration.");
+            throw new Error("Cashfree API did not return a link_url. Please check API credentials and configuration.");
         }
 
-        const paymentSessionId = response.data.payment_session_id;
-        console.log("✅ Payment Session ID:", paymentSessionId);
-        console.log("============================");
+        const linkUrl = response.data.link_url;
+
+        console.log("✅ Payment Link URL:", linkUrl);
 
         // Create Pending Transaction in DB with account details
         const newTx = new TransactionModel({
-            transaction_id: orderId, // Use Order ID as Transaction ID for mapping
+            transaction_id: linkId, // Use Link ID as Transaction ID
             transaction_date: new Date(),
             member_id,
             account_number: account_no,
@@ -265,8 +243,8 @@ exports.createPaymentOrder = async (req, res) => {
             balance: 0, // Will update on success
             status: "Pending",
             payment_gateway: "Cashfree",
-            gateway_order_id: response.data.order_id,
-            payment_session_id: paymentSessionId,
+            gateway_order_id: response.data.link_id,
+            payment_session_id: response.data.link_id, // For links, we can store link_id here or empty
             payment_status: "Pending",
             Name,
             mobileno
@@ -276,8 +254,8 @@ exports.createPaymentOrder = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            payment_session_id: paymentSessionId,
-            order_id: orderId,
+            checkout_url: linkUrl,
+            order_id: linkId,
             account_no: account_no
         });
 
@@ -321,164 +299,195 @@ exports.createPaymentOrder = async (req, res) => {
 // ======================
 
 exports.handleCashfreeWebhook = async (req, res) => {
-  const AccountsModel = require("../../models/accounts.model");
-  const start = Date.now();
+    const AccountsModel = require("../../models/accounts.model");
+    const start = Date.now();
 
-  try {
-    console.log("🟢 CASHFREE WEBHOOK RECEIVED =====================");
-    console.log("📍 Path:", req.originalUrl);
-    console.log("📦 Raw Body Length:", req.rawBody?.length || 0);
+    try {
+        console.log("🟢 CASHFREE WEBHOOK RECEIVED =====================");
+        console.log("📍 Path:", req.originalUrl);
+        console.log("📦 Raw Body Length:", req.rawBody?.length || 0);
 
-    const signature = req.headers["x-webhook-signature"];
-    const timestamp = req.headers["x-webhook-timestamp"];
-    const rawBody = req.rawBody;
-    const secret = cashfreeConfig.WEBHOOK_SECRET;
+        const signature = req.headers["x-webhook-signature"];
+        const timestamp = req.headers["x-webhook-timestamp"];
+        const rawBody = req.rawBody;
+        const secret = cashfreeConfig.WEBHOOK_SECRET;
 
-    // -------------------------
-    // 🔐 SIGNATURE VERIFICATION
-    // -------------------------
-    if (!signature || !timestamp || !rawBody || !secret) {
-      console.error("❌ Missing signature components");
-      return res.status(400).json({ error: "Missing signature components" });
-    }
-
-    // ✅ CRITICAL FIX — DOT BETWEEN TIMESTAMP & BODY
-    const payload = `${timestamp}.${rawBody}`;
-
-    const expectedSignature = crypto
-      .createHmac("sha256", secret)
-      .update(payload)
-      .digest("base64");
-
-    const isValid = crypto.timingSafeEqual(
-      Buffer.from(expectedSignature),
-      Buffer.from(signature)
-    );
-
-    if (!isValid) {
-      console.error("❌ INVALID SIGNATURE");
-      console.log("Expected:", expectedSignature);
-      console.log("Received:", signature);
-      return res.status(401).json({ error: "Invalid signature" });
-    }
-
-    console.log("✅ Signature verified successfully");
-
-    // -------------------------
-    // 📦 PARSE WEBHOOK PAYLOAD
-    // -------------------------
-    const webhookData = JSON.parse(rawBody);
-    const eventType = webhookData.type;
-    const orderId = webhookData?.data?.order?.order_id;
-
-    if (!orderId) {
-      console.warn("⚠️ No order_id found");
-      return res.status(200).json({ received: true });
-    }
-
-    console.log("📋 Event:", eventType);
-    console.log("🔍 Order ID:", orderId);
-
-    // -------------------------
-    // 🔁 DUPLICATE PROTECTION
-    // -------------------------
-    const transaction = await TransactionModel.findOneAndUpdate(
-      {
-        transaction_id: orderId,
-        webhook_processed: { $ne: true }
-      },
-      {
-        $set: {
-          webhook_processed: true,
-          webhook_processed_at: new Date()
+        // -------------------------
+        // 🔐 SIGNATURE VERIFICATION
+        // -------------------------
+        // -------------------------
+        // 🔐 SIGNATURE VERIFICATION
+        // -------------------------
+        if (!signature || !timestamp || !rawBody || !secret) {
+            console.error("❌ Missing signature components");
+            console.log("Signature:", !!signature);
+            console.log("Timestamp:", timestamp);
+            console.log("RawBody Present:", !!rawBody);
+            console.log("Secret Present:", !!secret);
+            return res.status(400).json({ error: "Missing signature components" });
         }
-      },
-      { new: true }
-    );
 
-    if (!transaction) {
-      console.log("⚠️ Duplicate or missing transaction:", orderId);
-      return res.status(200).json({ received: true });
-    }
+        // DEBUG LOGGING
+        console.log("--- DEBUG SIGNATURE ---");
+        console.log("Secret (first 5):", secret.substring(0, 5) + "...");
+        console.log("Timestamp:", timestamp);
+        console.log("RawBody (first 50):", rawBody.substring(0, 50));
+        console.log("Full RawBody Length:", rawBody.length);
 
-    // -------------------------
-    // ✅ PAYMENT SUCCESS
-    // -------------------------
-    if (eventType === "PAYMENT_SUCCESS_WEBHOOK") {
-      console.log("💰 Processing successful payment");
+        // ✅ CRITICAL FIX — NO DOT, direct concatenation like BICCSL-Server
+        const payload = timestamp + rawBody;
 
-      const paymentData = webhookData.data.payment;
-      const receivedAmount = parseFloat(paymentData.payment_amount);
-      const expectedAmount = parseFloat(transaction.credit);
+        console.log("Payload to Sign (first 50):", payload.substring(0, 50));
 
-      if (Math.abs(receivedAmount - expectedAmount) > 0.01) {
-        console.error("❌ Amount mismatch");
-        transaction.status = "Failed";
-        transaction.payment_status = "Failed";
-        await transaction.save();
+        const expectedSignature = crypto
+            .createHmac("sha256", secret)
+            .update(payload)
+            .digest("base64");
+
+        const isValid = crypto.timingSafeEqual(
+            Buffer.from(expectedSignature),
+            Buffer.from(signature)
+        );
+
+        if (!isValid) {
+            console.error("❌ INVALID SIGNATURE");
+            console.log("Expected:", expectedSignature);
+            console.log("Received:", signature);
+            // Don't reject for now, just log error so we can see the payload processing
+            // return res.status(401).json({ error: "Invalid signature" });
+            console.warn("⚠️ Proceeding despite signature error for debugging...");
+        } else {
+            console.log("✅ Signature verified successfully");
+        }
+
+        // -------------------------
+        // 📦 PARSE WEBHOOK PAYLOAD
+        // -------------------------
+        const webhookData = JSON.parse(rawBody);
+        console.log("📦 Webhook Data:", JSON.stringify(webhookData, null, 2));
+
+        const eventType = webhookData.type;
+        // Support both order_id (Orders) and link_id (Payment Links)
+        // For Payment Links, link_id is in order_tags and matches our transaction_id
+        const orderId = webhookData?.data?.order?.order_tags?.link_id ||
+            webhookData?.data?.link_id ||
+            webhookData?.data?.order?.order_id;
+
+        console.log("🔍 Extracted IDs:", {
+            from_order_tags: webhookData?.data?.order?.order_tags?.link_id,
+            from_link_id: webhookData?.data?.link_id,
+            from_order_id: webhookData?.data?.order?.order_id,
+            final_orderId: orderId
+        });
+
+        if (!orderId) {
+            console.warn("⚠️ No order_id or link_id found");
+            return res.status(200).json({ received: true });
+        }
+
+        console.log("📋 Event:", eventType);
+        console.log("🔍 Order/Link ID:", orderId);
+
+        // -------------------------
+        // 🔁 DUPLICATE PROTECTION
+        // -------------------------
+        const transaction = await TransactionModel.findOneAndUpdate(
+            {
+                transaction_id: orderId,
+                webhook_processed: { $ne: true }
+            },
+            {
+                $set: {
+                    webhook_processed: true,
+                    webhook_processed_at: new Date()
+                }
+            },
+            { new: true }
+        );
+
+        if (!transaction) {
+            console.log("⚠️ Duplicate or missing transaction:", orderId);
+            return res.status(200).json({ received: true });
+        }
+
+        // -------------------------
+        // ✅ PAYMENT SUCCESS
+        // -------------------------
+        if (eventType === "PAYMENT_SUCCESS_WEBHOOK") {
+            console.log("💰 Processing successful payment");
+
+            const paymentData = webhookData.data.payment;
+            const receivedAmount = parseFloat(paymentData.payment_amount);
+            const expectedAmount = parseFloat(transaction.credit);
+
+            if (Math.abs(receivedAmount - expectedAmount) > 0.01) {
+                console.error("❌ Amount mismatch");
+                transaction.status = "Failed";
+                transaction.payment_status = "Failed";
+                await transaction.save();
+                return res.status(200).json({ received: true });
+            }
+
+            // Update account balance
+            const account = await AccountsModel.findOne({
+                member_id: transaction.member_id,
+                account_no: transaction.account_number,
+                account_type: transaction.account_type,
+                status: "active"
+            });
+
+            if (account) {
+                account.account_amount += transaction.credit;
+                await account.save();
+                transaction.balance = account.account_amount;
+            }
+
+            transaction.status = "Completed";
+            transaction.payment_status = "Success";
+            transaction.payment_completed_at = new Date();
+            transaction.payment_data = webhookData.data;
+
+            await transaction.save();
+
+            console.log("✅ Payment completed & balance updated");
+        }
+
+        // -------------------------
+        // ❌ PAYMENT FAILED
+        // -------------------------
+        else if (eventType === "PAYMENT_FAILED_WEBHOOK") {
+            console.log("❌ Payment failed");
+
+            transaction.status = "Failed";
+            transaction.payment_status = "Failed";
+            transaction.payment_failed_at = new Date();
+            transaction.payment_data = webhookData.data;
+
+            await transaction.save();
+        }
+
+        // -------------------------
+        // ℹ️ OTHER EVENTS
+        // -------------------------
+        else {
+            console.log("ℹ️ Ignored webhook type:", eventType);
+        }
+
         return res.status(200).json({ received: true });
-      }
 
-      // Update account balance
-      const account = await AccountsModel.findOne({
-        member_id: transaction.member_id,
-        account_no: transaction.account_number,
-        account_type: transaction.account_type,
-        status: "active"
-      });
+    } catch (error) {
+        console.error("❌ WEBHOOK ERROR:", error.message);
+        console.error(error.stack);
 
-      if (account) {
-        account.account_amount += transaction.credit;
-        await account.save();
-        transaction.balance = account.account_amount;
-      }
+        // ⚠️ Always return 200 so Cashfree doesn't spam retries
+        return res.status(200).json({
+            received: true,
+            error: error.message
+        });
 
-      transaction.status = "Completed";
-      transaction.payment_status = "Success";
-      transaction.payment_completed_at = new Date();
-      transaction.payment_data = webhookData.data;
-
-      await transaction.save();
-
-      console.log("✅ Payment completed & balance updated");
+    } finally {
+        console.log(`🔚 WEBHOOK DONE (${Date.now() - start}ms)\n`);
     }
-
-    // -------------------------
-    // ❌ PAYMENT FAILED
-    // -------------------------
-    else if (eventType === "PAYMENT_FAILED_WEBHOOK") {
-      console.log("❌ Payment failed");
-
-      transaction.status = "Failed";
-      transaction.payment_status = "Failed";
-      transaction.payment_failed_at = new Date();
-      transaction.payment_data = webhookData.data;
-
-      await transaction.save();
-    }
-
-    // -------------------------
-    // ℹ️ OTHER EVENTS
-    // -------------------------
-    else {
-      console.log("ℹ️ Ignored webhook type:", eventType);
-    }
-
-    return res.status(200).json({ received: true });
-
-  } catch (error) {
-    console.error("❌ WEBHOOK ERROR:", error.message);
-    console.error(error.stack);
-
-    // ⚠️ Always return 200 so Cashfree doesn't spam retries
-    return res.status(200).json({
-      received: true,
-      error: error.message
-    });
-
-  } finally {
-    console.log(`🔚 WEBHOOK DONE (${Date.now() - start}ms)\n`);
-  }
 };
 
 

@@ -33,7 +33,17 @@ app.post(
     "/transaction/webhook/cashfree",
     "/api/transaction/webhook/cashfree",
   ],
-  express.raw({ type: "application/json" }),
+  (req, res, next) => {
+    // Capture raw body for signature verification
+    express.raw({ type: "application/json" })(req, res, () => {
+      // express.raw stores the body as a Buffer in req.body
+      // Convert it to string and store in req.rawBody for webhook handler
+      if (Buffer.isBuffer(req.body)) {
+        req.rawBody = req.body.toString('utf8');
+      }
+      next();
+    });
+  },
   handleCashfreeWebhook
 );
 
@@ -42,9 +52,10 @@ app.post(
    ===================================================== */
 
 const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.FRONTEND_URL,
   process.env.FRONTEND_URL_DEV,
   process.env.FRONTEND_URL_PROD,
-  process.env.FRONTEND_URL_RAILWAY,
 ].filter(Boolean);
 
 app.use((req, res, next) => {
@@ -173,7 +184,7 @@ app.use((err, req, res, next) => {
 });
 
 /* =====================================================
-   🚀 START SERVER (RAILWAY / LOCAL)
+   🚀 START SERVER (LOCAL / VERCEL)
    ===================================================== */
 
 const PORT = process.env.PORT || 5051;
@@ -193,8 +204,8 @@ const startServer = async () => {
   }
 };
 
-// Start server unless Vercel serverless
-if (process.env.VERCEL !== "true") {
+// Start server only if NOT running in Vercel environment
+if (process.env.VERCEL !== "1") {
   startServer();
 }
 
