@@ -107,7 +107,7 @@ exports.getAllTransactions = async (req, res) => {
 // ==========================================
 
 
-// 1. Create Payment Order
+// 1. Create Payment Order (Using Cashfree Orders API)
 exports.createPaymentOrder = async (req, res) => {
     const AccountsModel = require("../../models/accounts.model");
     const MemberModel = require("../../models/member.model");
@@ -169,25 +169,30 @@ exports.createPaymentOrder = async (req, res) => {
             });
         }
 
-        const linkId = `LINK_${Date.now()}`; // Generate unique Link ID
+        const orderId = `ORDER_${Date.now()}`; // Generate unique Order ID
 
-        // Prepare Request for Payment Link
+        // Prepare Request for Cashfree Orders API
         const request = {
-            link_id: linkId,
-            link_amount: Number(amount),
-            link_currency: "INR",
-            link_purpose: description || "Add Money",
+            order_id: orderId,
+            order_amount: Number(amount),
+            order_currency: "INR",
+            order_note: description || "Add Money",
             customer_details: {
+                customer_id: String(member_id),
                 customer_phone: mobileno,
                 customer_name: Name,
                 customer_email: email || "customer@example.com"
             },
-            link_meta: {
-                return_url: `${process.env.FRONTEND_URL}/user/wallet?order_id={link_id}&order_status={link_status}&member_id=${member_id}`,
+            order_meta: {
+                return_url: `${process.env.FRONTEND_URL}/user/wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
                 notify_url: `${process.env.BACKEND_URL}/transaction/webhook/cashfree`
+            },
+            order_tags: {
+                account_no: String(account_no),
+                account_type: account_type,
+                member_id: String(member_id)
             }
         };
-
 
         // Check if Cashfree credentials are available
         if (!cashfreeConfig.CASHFREE_APP_ID || !cashfreeConfig.CASHFREE_SECRET_KEY) {
@@ -199,13 +204,13 @@ exports.createPaymentOrder = async (req, res) => {
         }
 
         // Log the request being sent to Cashfree
-        console.log("=== Creating Cashfree Payment Link ===");
+        console.log("=== Creating Cashfree Order ===");
         console.log("Environment:", cashfreeConfig.IS_PRODUCTION ? "PRODUCTION" : "SANDBOX");
         console.log("Base URL:", cashfreeConfig.CASHFREE_BASE_URL);
         console.log("Request Body:", JSON.stringify(request, null, 2));
 
-        // Direct axios call to Cashfree API (Links Endpoint)
-        const response = await axios.post(`${cashfreeConfig.CASHFREE_BASE_URL}/pg/links`, request, {
+        // Direct axios call to Cashfree Orders API
+        const response = await axios.post(`${cashfreeConfig.CASHFREE_BASE_URL}/pg/orders`, request, {
             headers: {
                 'Content-Type': 'application/json',
                 'x-client-id': cashfreeConfig.CASHFREE_APP_ID,
@@ -218,20 +223,26 @@ exports.createPaymentOrder = async (req, res) => {
         console.log("Status:", response.status);
         console.log("Response Data:", JSON.stringify(response.data, null, 2));
 
-        // Validate that link_url exists in response
-        if (!response.data || !response.data.link_url) {
-            console.error("❌ ERROR: link_url not found in Cashfree response!");
+        // Validate that payment_session_id exists in response
+        if (!response.data || !response.data.payment_session_id) {
+            console.error("❌ ERROR: payment_session_id not found in Cashfree response!");
             console.error("Full Response:", JSON.stringify(response.data, null, 2));
-            throw new Error("Cashfree API did not return a link_url. Please check API credentials and configuration.");
+            throw new Error("Cashfree API did not return a payment_session_id. Please check API credentials and configuration.");
         }
 
-        const linkUrl = response.data.link_url;
+        const paymentSessionId = response.data.payment_session_id;
 
-        console.log("✅ Payment Link URL:", linkUrl);
+        // Construct the checkout URL using Cashfree's hosted checkout
+        const checkoutUrl = cashfreeConfig.IS_PRODUCTION
+            ? `https://payments.cashfree.com/order/#${paymentSessionId}`
+            : `https://payments-test.cashfree.com/order/#${paymentSessionId}`;
+
+        console.log("✅ Payment Session ID:", paymentSessionId);
+        console.log("✅ Checkout URL:", checkoutUrl);
 
         // Create Pending Transaction in DB with account details
         const newTx = new TransactionModel({
-            transaction_id: linkId, // Use Link ID as Transaction ID
+            transaction_id: orderId, // Use Order ID as Transaction ID
             transaction_date: new Date(),
             member_id,
             account_number: account_no,
@@ -243,8 +254,8 @@ exports.createPaymentOrder = async (req, res) => {
             balance: 0, // Will update on success
             status: "Pending",
             payment_gateway: "Cashfree",
-            gateway_order_id: response.data.link_id,
-            payment_session_id: response.data.link_id, // For links, we can store link_id here or empty
+            gateway_order_id: response.data.order_id,
+            payment_session_id: paymentSessionId,
             payment_status: "Pending",
             Name,
             mobileno
@@ -254,8 +265,9 @@ exports.createPaymentOrder = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            checkout_url: linkUrl,
-            order_id: linkId,
+            checkout_url: checkoutUrl,
+            payment_session_id: paymentSessionId,
+            order_id: orderId,
             account_no: account_no
         });
 
@@ -367,26 +379,18 @@ exports.handleCashfreeWebhook = async (req, res) => {
         console.log("📦 Webhook Data:", JSON.stringify(webhookData, null, 2));
 
         const eventType = webhookData.type;
-        // Support both order_id (Orders) and link_id (Payment Links)
-        // For Payment Links, link_id is in order_tags and matches our transaction_id
-        const orderId = webhookData?.data?.order?.order_tags?.link_id ||
-            webhookData?.data?.link_id ||
-            webhookData?.data?.order?.order_id;
+        // Extract order_id from Cashfree Orders API webhook
+        const orderId = webhookData?.data?.order?.order_id;
 
-        console.log("🔍 Extracted IDs:", {
-            from_order_tags: webhookData?.data?.order?.order_tags?.link_id,
-            from_link_id: webhookData?.data?.link_id,
-            from_order_id: webhookData?.data?.order?.order_id,
-            final_orderId: orderId
-        });
+        console.log("🔍 Extracted Order ID:", orderId);
 
         if (!orderId) {
-            console.warn("⚠️ No order_id or link_id found");
+            console.warn("⚠️ No order_id found in webhook data");
             return res.status(200).json({ received: true });
         }
 
         console.log("📋 Event:", eventType);
-        console.log("🔍 Order/Link ID:", orderId);
+        console.log("🔍 Order ID:", orderId);
 
         // -------------------------
         // 🔁 DUPLICATE PROTECTION
