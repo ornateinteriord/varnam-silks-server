@@ -3,31 +3,39 @@ require("dotenv").config();
 
 /**
  * Environment detection
- * Vercel => production
+ * More robust detection to handle various env value formats
  */
-const NODE_ENV = process.env.NODE_ENV || "development";
+const NODE_ENV = (process.env.NODE_ENV || "development").toLowerCase();
+const PAYMENT_MODE = (process.env.PAYMENT_MODE || "").toUpperCase();
+
+// Match BICCSL-Server logic: check for production-like values
 const IS_PRODUCTION =
     NODE_ENV === "production" ||
-    NODE_ENV === "PROD" ||
-    process.env.PAYMENT_MODE === "PROD";
+    NODE_ENV === "prod" ||
+    PAYMENT_MODE === "PROD" ||
+    PAYMENT_MODE === "PRODUCTION";
+
+console.log("🔍 Environment Detection:");
+console.log("  - NODE_ENV raw:", process.env.NODE_ENV);
+console.log("  - NODE_ENV normalized:", NODE_ENV);
+console.log("  - PAYMENT_MODE raw:", process.env.PAYMENT_MODE);
+console.log("  - PAYMENT_MODE normalized:", PAYMENT_MODE);
+console.log("  - IS_PRODUCTION:", IS_PRODUCTION);
 
 /**
  * Cashfree Credentials
- * (Supports single & split env pattern)
+ * Simplified: Use CASHFREE_APP_ID and CASHFREE_SECRET_KEY directly (like BICCSL-Server)
+ * The correct credentials should be set in the environment based on production/sandbox
  */
-const CASHFREE_APP_ID = IS_PRODUCTION
-    ? process.env.CASHFREE_PRODUCTION_APP_ID || process.env.CASHFREE_APP_ID
-    : process.env.CASHFREE_SANDBOX_APP_ID || process.env.CASHFREE_APP_ID;
+const CASHFREE_APP_ID = process.env.CASHFREE_APP_ID;
+const CASHFREE_SECRET_KEY = process.env.CASHFREE_SECRET_KEY;
+const WEBHOOK_SECRET = process.env.CASHFREE_WEBHOOK_SECRET || CASHFREE_SECRET_KEY;
 
-const CASHFREE_SECRET_KEY = IS_PRODUCTION
-    ? process.env.CASHFREE_PRODUCTION_SECRET_KEY || process.env.CASHFREE_SECRET_KEY
-    : process.env.CASHFREE_SANDBOX_SECRET_KEY || process.env.CASHFREE_SECRET_KEY;
-
-const WEBHOOK_SECRET = IS_PRODUCTION
-    ? process.env.CASHFREE_PRODUCTION_WEBHOOK_SECRET
-    : process.env.CASHFREE_SANDBOX_WEBHOOK_SECRET
-    || process.env.CASHFREE_WEBHOOK_SECRET
-    || CASHFREE_SECRET_KEY; // Fallback to main secret key (like BICCSL-Server)
+console.log("🔐 Credentials:");
+console.log("  - APP_ID present:", !!CASHFREE_APP_ID);
+console.log("  - APP_ID (first 10 chars):", CASHFREE_APP_ID?.substring(0, 10) + "...");
+console.log("  - SECRET_KEY present:", !!CASHFREE_SECRET_KEY);
+console.log("  - WEBHOOK_SECRET present:", !!WEBHOOK_SECRET);
 
 /**
  * Validation
