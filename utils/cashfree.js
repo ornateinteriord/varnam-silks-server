@@ -25,7 +25,9 @@ const CASHFREE_SECRET_KEY = IS_PRODUCTION
 
 const WEBHOOK_SECRET = IS_PRODUCTION
     ? process.env.CASHFREE_PRODUCTION_WEBHOOK_SECRET
-    : process.env.CASHFREE_SANDBOX_WEBHOOK_SECRET || process.env.CASHFREE_WEBHOOK_SECRET;
+    : process.env.CASHFREE_SANDBOX_WEBHOOK_SECRET
+    || process.env.CASHFREE_WEBHOOK_SECRET
+    || CASHFREE_SECRET_KEY; // Fallback to main secret key (like BICCSL-Server)
 
 /**
  * Validation

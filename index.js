@@ -34,8 +34,8 @@ app.post(
     "/api/transaction/webhook/cashfree",
   ],
   (req, res, next) => {
-    // Capture raw body for signature verification
-    express.raw({ type: "application/json" })(req, res, () => {
+    // Capture raw body for signature verification (match BICCSL-Server: type "*/*")
+    express.raw({ type: "*/*" })(req, res, () => {
       // express.raw stores the body as a Buffer in req.body
       // Convert it to string and store in req.rawBody for webhook handler
       if (Buffer.isBuffer(req.body)) {
