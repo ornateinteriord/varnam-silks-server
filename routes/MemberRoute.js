@@ -14,8 +14,8 @@ router.get('/get-my-accounts', Authenticated, authorizeRoles(["USER"]), getMyAcc
 router.put('/update-profile/:memberId', Authenticated, authorizeRoles(["USER"]), updateMyProfile);
 
 // Transfer-related routes (for recipient lookup)
-router.get('/basic-info/:memberId', Authenticated, authorizeRoles(["USER"]), getMemberBasicInfo);
-router.get('/accounts/:memberId', Authenticated, authorizeRoles(["USER"]), getMemberAccountsPublic);
+router.get('/basic-info/:memberId', Authenticated, authorizeRoles(["USER", "ADMIN"]), getMemberBasicInfo);
+router.get('/accounts/:memberId', Authenticated, authorizeRoles(["USER", "ADMIN"]), getMemberAccountsPublic);
 
 // Get member transactions (with optional account_type filter)
 router.get('/transactions/:memberId', Authenticated, authorizeRoles(["USER"]), getMemberTransactions);

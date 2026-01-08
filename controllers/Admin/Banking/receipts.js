@@ -13,7 +13,9 @@ const createReceipt = async (req, res) => {
             ref_no,
             receipt_no,
             entered_by,
-            branch_code
+            branch_code,
+            member_id,
+            account_details
         } = req.body;
 
         // Auto-increment receipt_id with RPT prefix
@@ -45,7 +47,9 @@ const createReceipt = async (req, res) => {
             ref_no,
             receipt_no,
             entered_by,
-            branch_code
+            branch_code,
+            member_id,
+            account_details
         });
 
         res.status(201).json({
@@ -80,7 +84,9 @@ const getReceipts = async (req, res) => {
             filter.$or = [
                 { receipt_id: { $regex: search, $options: "i" } },
                 { receipt_details: { $regex: search, $options: "i" } },
-                { received_from: { $regex: search, $options: "i" } }
+                { received_from: { $regex: search, $options: "i" } },
+                { member_id: { $regex: search, $options: "i" } },
+                { "account_details.account_no": { $regex: search, $options: "i" } }
             ];
         }
 
