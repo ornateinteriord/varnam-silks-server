@@ -46,6 +46,24 @@ const paymentsSchema = mongoose.Schema(
       type: String,
       required: true,
     },
+    member_id: {
+      type: String,
+      default: null,
+    },
+    account_details: {
+      account_no: {
+        type: String,
+        default: null,
+      },
+      account_type: {
+        type: String,
+        default: null,
+      },
+      account_id: {
+        type: String,
+        default: null,
+      },
+    },
   },
   { timestamps: true, collection: "payments_tbl" }
 );

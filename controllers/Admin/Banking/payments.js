@@ -13,7 +13,9 @@ const createPayment = async (req, res) => {
             ref_no,
             payment_no,
             entered_by,
-            branch_code
+            branch_code,
+            member_id,
+            account_details
         } = req.body;
 
         // Auto-increment payment_id with PMT prefix
@@ -45,7 +47,9 @@ const createPayment = async (req, res) => {
             ref_no,
             payment_no,
             entered_by,
-            branch_code
+            branch_code,
+            member_id,
+            account_details
         });
 
         res.status(201).json({
@@ -80,7 +84,9 @@ const getPayments = async (req, res) => {
             filter.$or = [
                 { payment_id: { $regex: search, $options: "i" } },
                 { payment_details: { $regex: search, $options: "i" } },
-                { paid_to: { $regex: search, $options: "i" } }
+                { paid_to: { $regex: search, $options: "i" } },
+                { member_id: { $regex: search, $options: "i" } },
+                { "account_details.account_no": { $regex: search, $options: "i" } }
             ];
         }
 
