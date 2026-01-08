@@ -80,7 +80,7 @@ const agentSchema = mongoose.Schema(
     },
     designation: {
       type: String,
-      required: true,
+      default: null,
     },
   },
   { timestamps: true, collection: "agent_tbl" }
