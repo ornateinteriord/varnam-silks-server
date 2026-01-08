@@ -1,4 +1,6 @@
 const ReceiptsModel = require("../../../models/receipts.model.js");
+const AccountsModel = require("../../../models/accounts.model.js");
+const TransactionModel = require("../../../models/transaction.model.js");
 
 // Create a new receipt
 const createReceipt = async (req, res) => {
@@ -51,6 +53,50 @@ const createReceipt = async (req, res) => {
             member_id,
             account_details
         });
+
+        // If account_details is provided, update account balance and create transaction
+        if (account_details && account_details.account_id && amount > 0) {
+            // Update account balance - ADD money for receipt
+            const account = await AccountsModel.findOneAndUpdate(
+                { account_id: account_details.account_id },
+                { $inc: { account_amount: amount } },
+                { new: true }
+            );
+
+            if (account) {
+                // Generate transaction ID
+                const lastTrans = await TransactionModel.findOne()
+                    .sort({ createdAt: -1 })
+                    .limit(1);
+
+                let transId = "TXN00001";
+                if (lastTrans && lastTrans.transaction_id) {
+                    const numPart = lastTrans.transaction_id.replace(/^TXN/, '');
+                    const lastNum = parseInt(numPart);
+                    if (!isNaN(lastNum)) {
+                        transId = `TXN${(lastNum + 1).toString().padStart(5, '0')}`;
+                    }
+                }
+
+                // Create transaction record
+                await TransactionModel.create({
+                    transaction_id: transId,
+                    transaction_date: receipt_date || new Date(),
+                    member_id: member_id,
+                    account_number: account_details.account_no,
+                    account_type: account_details.account_type,
+                    transaction_type: "Receipt",
+                    description: receipt_details || `Receipt - ${newReceiptId}`,
+                    credit: amount,
+                    debit: 0,
+                    balance: account.account_amount,
+                    Name: received_from,
+                    status: "Completed",
+                    reference_no: newReceiptId,
+                    collected_by: entered_by
+                });
+            }
+        }
 
         res.status(201).json({
             success: true,
