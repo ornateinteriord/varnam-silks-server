@@ -1,4 +1,6 @@
 const PaymentsModel = require("../../../models/payments.model.js");
+const AccountsModel = require("../../../models/accounts.model.js");
+const TransactionModel = require("../../../models/transaction.model.js");
 
 // Create a new payment
 const createPayment = async (req, res) => {
@@ -17,6 +19,23 @@ const createPayment = async (req, res) => {
             member_id,
             account_details
         } = req.body;
+
+        // If account_details is provided, check sufficient balance before creating payment
+        if (account_details && account_details.account_id && amount > 0) {
+            const account = await AccountsModel.findOne({ account_id: account_details.account_id });
+            if (!account) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Account not found"
+                });
+            }
+            if ((account.account_amount || 0) < amount) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Insufficient balance! Account ${account_details.account_no || account.account_no} has ₹${(account.account_amount || 0).toFixed(2)} but ₹${amount.toFixed(2)} is required. Cannot deduct the entered amount.`
+                });
+            }
+        }
 
         // Auto-increment payment_id with PMT prefix
         const lastPayment = await PaymentsModel.findOne()
@@ -51,6 +70,50 @@ const createPayment = async (req, res) => {
             member_id,
             account_details
         });
+
+        // If account_details is provided, update account balance and create transaction
+        if (account_details && account_details.account_id && amount > 0) {
+            // Update account balance - DEDUCT money for payment
+            const account = await AccountsModel.findOneAndUpdate(
+                { account_id: account_details.account_id },
+                { $inc: { account_amount: -amount } },
+                { new: true }
+            );
+
+            if (account) {
+                // Generate transaction ID
+                const lastTrans = await TransactionModel.findOne()
+                    .sort({ createdAt: -1 })
+                    .limit(1);
+
+                let transId = "TXN00001";
+                if (lastTrans && lastTrans.transaction_id) {
+                    const numPart = lastTrans.transaction_id.replace(/^TXN/, '');
+                    const lastNum = parseInt(numPart);
+                    if (!isNaN(lastNum)) {
+                        transId = `TXN${(lastNum + 1).toString().padStart(5, '0')}`;
+                    }
+                }
+
+                // Create transaction record
+                await TransactionModel.create({
+                    transaction_id: transId,
+                    transaction_date: payment_date || new Date(),
+                    member_id: member_id,
+                    account_number: account_details.account_no,
+                    account_type: account_details.account_type,
+                    transaction_type: "Payment",
+                    description: payment_details || `Payment - ${newPaymentId}`,
+                    credit: 0,
+                    debit: amount,
+                    balance: account.account_amount,
+                    Name: paid_to,
+                    status: "Completed",
+                    reference_no: newPaymentId,
+                    collected_by: entered_by
+                });
+            }
+        }
 
         res.status(201).json({
             success: true,
