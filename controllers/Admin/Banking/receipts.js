@@ -1,6 +1,7 @@
 const ReceiptsModel = require("../../../models/receipts.model.js");
 const AccountsModel = require("../../../models/accounts.model.js");
 const TransactionModel = require("../../../models/transaction.model.js");
+const generateTransactionId = require("../../../utils/generateTransactionId.js");
 
 // Create a new receipt
 const createReceipt = async (req, res) => {
@@ -64,19 +65,8 @@ const createReceipt = async (req, res) => {
             );
 
             if (account) {
-                // Generate transaction ID
-                const lastTrans = await TransactionModel.findOne()
-                    .sort({ createdAt: -1 })
-                    .limit(1);
-
-                let transId = "TXN00001";
-                if (lastTrans && lastTrans.transaction_id) {
-                    const numPart = lastTrans.transaction_id.replace(/^TXN/, '');
-                    const lastNum = parseInt(numPart);
-                    if (!isNaN(lastNum)) {
-                        transId = `TXN${(lastNum + 1).toString().padStart(5, '0')}`;
-                    }
-                }
+                // Generate unique transaction ID using utility
+                const transId = await generateTransactionId();
 
                 // Create transaction record
                 await TransactionModel.create({
