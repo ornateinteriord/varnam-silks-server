@@ -15,13 +15,14 @@ const processMaturedAccounts = async () => {
         const today = new Date();
         today.setHours(0, 0, 0, 0); // Start of today
 
-        // Find accounts where maturity date has passed and not yet processed
+        // Find accounts where maturity date has passed (or is today) and not yet processed
+        // Using $lte to include accounts maturing exactly on processing date
         const maturedAccounts = await AccountsModel.find({
-            date_of_maturity: { $lt: today }, // Maturity date is before today
-            maturity_processed: { $ne: true }, // Not yet processed
-            status: { $nin: ["closed", "inactive"] }, // Only active accounts
-            account_amount: { $gt: 0 }, // Has some amount
-            interest_rate: { $gt: 0 }, // Has interest rate defined
+            date_of_maturity: { $lte: today },
+            maturity_processed: { $ne: true },
+            status: { $nin: ["closed", "inactive"] },
+            account_amount: { $gt: 0 },
+            interest_rate: { $gt: 0 },
         });
 
         console.log(`📋 [Maturity Scheduler] Found ${maturedAccounts.length} matured account(s) to process`);
@@ -31,23 +32,31 @@ const processMaturedAccounts = async () => {
 
         for (const account of maturedAccounts) {
             try {
-                // Calculate interest and net amount
-                const interestAmount = (account.account_amount * account.interest_rate) / 100;
+                // Calculate interest and net amount (Duration Aware)
+                // Formula: (P * R * T) / 100 where T is duration in years
+                // If duration is in months: (P * R * M) / (100 * 12)
+                const durationInMonths = (typeof account.duration === "number" && account.duration > 0)
+                    ? account.duration
+                    : 12; // Default to 12 months if missing
+
+                const interestAmount = (account.account_amount * account.interest_rate * durationInMonths) / (100 * 12);
                 const netAmount = account.account_amount + interestAmount;
 
                 console.log(`💰 [Maturity Scheduler] Processing account ${account.account_id}:`);
-                console.log(`   Principal: ${account.account_amount}, Rate: ${account.interest_rate}%`);
+                console.log(`   Principal: ${account.account_amount}, Rate: ${account.interest_rate}%, Duration: ${durationInMonths}m`);
                 console.log(`   Interest: ${interestAmount}, Net Amount: ${netAmount}`);
 
-                // Update account with interest details
+                // Update account with interest details AND new balance
                 await AccountsModel.findByIdAndUpdate(account._id, {
                     interest_amount: interestAmount,
                     net_amount: netAmount,
+                    account_amount: netAmount, // Update principal to reflect new balance
                     maturity_processed: true,
                 });
 
                 // Generate transaction ID and create transaction record
                 const transactionId = await generateTransactionId();
+                const maturityDateStr = account.date_of_maturity.toDateString(); // Readable date format
 
                 await TransactionModel.create({
                     transaction_id: transactionId,
@@ -56,7 +65,7 @@ const processMaturedAccounts = async () => {
                     account_number: account.account_no,
                     account_type: account.account_type,
                     transaction_type: "Interest Credit",
-                    description: `Maturity Interest - Account ${account.account_no} matured on ${account.date_of_maturity.toISOString().split('T')[0]}`,
+                    description: `Maturity Interest - Account ${account.account_no} matured on ${maturityDateStr}`,
                     credit: interestAmount,
                     debit: 0,
                     balance: netAmount,

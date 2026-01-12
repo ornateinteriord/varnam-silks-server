@@ -16,6 +16,7 @@ const ReceiptsRoutes = require("./routes/ReceiptsRoute");
 const PaymentsRoutes = require("./routes/PaymentsRoute");
 const CashTransactionRoutes = require("./routes/CashTransactionRoute");
 const DebugRoutes = require("./routes/DebugRoute");
+const CronRoutes = require("./routes/CronRoute");
 const { startMaturityScheduler } = require("./utils/maturityScheduler");
 
 // ====================== Controllers ======================
@@ -173,6 +174,7 @@ app.use("/transaction", TransactionRoutes);
 app.use("/banking", ReceiptsRoutes);
 app.use("/banking", PaymentsRoutes);
 app.use("/banking/cash-transactions", CashTransactionRoutes);
+app.use("/api/cron", CronRoutes);
 app.use("/debug", DebugRoutes);
 
 /* =====================================================
