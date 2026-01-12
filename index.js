@@ -16,6 +16,7 @@ const ReceiptsRoutes = require("./routes/ReceiptsRoute");
 const PaymentsRoutes = require("./routes/PaymentsRoute");
 const CashTransactionRoutes = require("./routes/CashTransactionRoute");
 const DebugRoutes = require("./routes/DebugRoute");
+const { startMaturityScheduler } = require("./utils/maturityScheduler");
 
 // ====================== Controllers ======================
 const {
@@ -215,6 +216,9 @@ const startServer = async () => {
       console.log(`🌍 Server running on port ${PORT}`);
       console.log("🔔 Cashfree webhook ready");
     });
+
+    // Start maturity scheduler cron job (runs daily at midnight)
+    startMaturityScheduler();
   } catch (error) {
     console.error("❌ Server failed:", error.message);
     process.exit(1);

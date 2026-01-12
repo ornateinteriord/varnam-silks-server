@@ -74,6 +74,18 @@ const accountsSchema = mongoose.Schema(
       type: String,
       default: null,
     },
+    interest_amount: {
+      type: Number,
+      default: null,
+    },
+    net_amount: {
+      type: Number,
+      default: null,
+    },
+    maturity_processed: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true, collection: "accounts_tbl" }
 );

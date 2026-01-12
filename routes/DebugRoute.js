@@ -232,4 +232,76 @@ router.get("/webhook-status", (req, res) => {
     });
 });
 
+// ==========================================
+// MATURITY PROCESSING DEBUG ENDPOINT
+// ==========================================
+router.post("/process-maturity", async (req, res) => {
+    try {
+        console.log("🧪 Manual maturity processing triggered via debug endpoint");
+
+        const { processMaturedAccounts } = require("../utils/maturityScheduler");
+        const result = await processMaturedAccounts();
+
+        return res.status(200).json({
+            success: true,
+            message: "Maturity processing completed",
+            result,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error("❌ Manual maturity processing error:", error.message);
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// Get matured accounts pending processing
+router.get("/matured-accounts", async (req, res) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const maturedAccounts = await AccountsModel.find({
+            date_of_maturity: { $lt: today },
+            maturity_processed: { $ne: true },
+            status: { $nin: ["closed", "inactive"] },
+        });
+
+        const processedAccounts = await AccountsModel.find({
+            maturity_processed: true,
+        }).limit(10).sort({ updatedAt: -1 });
+
+        return res.status(200).json({
+            success: true,
+            pending_processing: maturedAccounts.map(acc => ({
+                account_id: acc.account_id,
+                account_no: acc.account_no,
+                member_id: acc.member_id,
+                account_amount: acc.account_amount,
+                interest_rate: acc.interest_rate,
+                date_of_maturity: acc.date_of_maturity,
+                status: acc.status
+            })),
+            recently_processed: processedAccounts.map(acc => ({
+                account_id: acc.account_id,
+                account_no: acc.account_no,
+                interest_amount: acc.interest_amount,
+                net_amount: acc.net_amount,
+                date_of_maturity: acc.date_of_maturity,
+                updatedAt: acc.updatedAt
+            })),
+            pending_count: maturedAccounts.length,
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error("❌ Error fetching matured accounts:", error.message);
+        return res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;
