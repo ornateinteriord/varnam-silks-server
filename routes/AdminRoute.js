@@ -6,6 +6,7 @@ const { getDashboardCounts, getRecentData } = require("../controllers/Admin/Dash
 const { migrateExistingMembersHierarchy } = require("../utils/hierarchyHelper");
 const Authenticated = require("../middlewares/auth");
 const authorizeRoles = require("../middlewares/authorizeRole");
+const { createMaturityPayment } = require("../controllers/Admin/Banking/cashTransaction");
 
 const router = require("express").Router();
 
@@ -53,5 +54,6 @@ router.put('/update-account-assignment/:accountId', Authenticated, authorizeRole
 // Dashboard routes
 router.get('/get-dashboard-counts', Authenticated, authorizeRoles(["ADMIN"]), getDashboardCounts)
 router.get('/get-recent-data', Authenticated, authorizeRoles(["ADMIN"]), getRecentData)
+router.post("/maturity-payment", Authenticated, authorizeRoles(["ADMIN"]), createMaturityPayment);
 
 module.exports = router;
