@@ -235,7 +235,10 @@ router.get("/webhook-status", (req, res) => {
 // ==========================================
 // MATURITY PROCESSING DEBUG ENDPOINT
 // ==========================================
-router.post("/process-maturity", async (req, res) => {
+const Authenticated = require("../middlewares/auth");
+const authorizeRole = require("../middlewares/authorizeRole");
+
+router.post("/process-maturity", Authenticated, authorizeRole(["super_admin", "admin"]), async (req, res) => {
     try {
         console.log("🧪 Manual maturity processing triggered via debug endpoint");
 
@@ -258,13 +261,13 @@ router.post("/process-maturity", async (req, res) => {
 });
 
 // Get matured accounts pending processing
-router.get("/matured-accounts", async (req, res) => {
+router.get("/matured-accounts", Authenticated, authorizeRole(["super_admin", "admin"]), async (req, res) => {
     try {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
         const maturedAccounts = await AccountsModel.find({
-            date_of_maturity: { $lt: today },
+            date_of_maturity: { $lte: today },
             maturity_processed: { $ne: true },
             status: { $nin: ["closed", "inactive"] },
         });
