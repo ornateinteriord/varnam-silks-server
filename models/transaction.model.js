@@ -73,6 +73,10 @@ const transactionSchema = new mongoose.Schema(
             type: String,
             default: null,
         },
+        paid_by: {
+            type: String,
+            default: null,
+        },
     },
     { timestamps: true, collection: "transaction_tbl" }
 );

@@ -2,6 +2,7 @@ const TransactionModel = require("../../models/transaction.model");
 const cashfreeConfig = require("../../utils/cashfree");
 const crypto = require("crypto");
 const axios = require("axios");
+const { processTransactionCommission } = require("../../utils/commissionUtils");
 // Unified format for Transaction ID
 const generateTransactionId = () => `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
@@ -438,6 +439,12 @@ exports.handleCashfreeWebhook = async (req, res) => {
         // ✅ PAYMENT SUCCESS
         // -------------------------
         if (eventType === "PAYMENT_SUCCESS_WEBHOOK") {
+            // Additional check: Skip if already completed (race condition protection)
+            if (transaction.status === "Completed") {
+                console.log("⚠️ Transaction already completed, skipping duplicate processing");
+                return res.status(200).json({ received: true, message: "Already processed" });
+            }
+
             console.log("💰 Processing successful payment");
 
             const paymentData = webhookData.data.payment;
@@ -484,6 +491,16 @@ exports.handleCashfreeWebhook = async (req, res) => {
             await transaction.save();
 
             console.log("✅ Payment completed & balance updated");
+
+            // Process commission for introducers
+            try {
+                console.log("💰 Processing commission for transaction...");
+                const commissionResult = await processTransactionCommission(transaction);
+                console.log("💰 Commission processing result:", commissionResult);
+            } catch (commissionError) {
+                console.error("❌ Commission processing error:", commissionError.message);
+                // Don't fail the webhook if commission fails
+            }
         }
 
         // -------------------------

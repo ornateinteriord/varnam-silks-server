@@ -76,7 +76,7 @@ const commissionSchema = new mongoose.Schema(
         // Status Tracking
         status: {
             type: String,
-            enum: ["PENDING", "CREDITED", "FAILED"],
+            enum: ["PENDING", "CREDITED", "FAILED", "WITHDRAWN"],
             default: "PENDING",
         },
         credited_at: {

@@ -88,6 +88,10 @@ const memberSchema = mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    commission_balance: {
+      type: Number,
+      default: 0,
+    },
     introducer_hierarchy: {
       type: [String],
       default: [],

@@ -325,50 +325,99 @@ const distributeCommissions = async (commissions) => {
 
             await commissionRecord.save();
 
-            // Credit the commission amount to beneficiary's account
-            // Find beneficiary's first active account (preferably wallet/savings)
-            let beneficiaryIdField;
-            if (commission.beneficiary_type === "MEMBER") {
-                beneficiaryIdField = commission.beneficiary_id;
-            } else {
-                beneficiaryIdField = commission.beneficiary_id;
-            }
-
-            const beneficiaryAccount = await AccountsModel.findOne({
-                $or: [
-                    { member_id: beneficiaryIdField },
-                    { member_id: parseInt(beneficiaryIdField) }
-                ],
-                status: "active",
-            }).sort({ date_of_opening: 1 });
-
-            if (beneficiaryAccount) {
-                // Update account balance
-                beneficiaryAccount.account_amount =
-                    (parseFloat(beneficiaryAccount.account_amount) || 0) + commission.commission_amount;
-                await beneficiaryAccount.save();
-
-                // Update commission record as credited
-                commissionRecord.status = "CREDITED";
-                commissionRecord.credited_at = new Date();
-                await commissionRecord.save();
-
-                results.successful.push({
-                    commission_id: commissionId,
-                    beneficiary_id: commission.beneficiary_id,
-                    amount: commission.commission_amount,
+            // Credit the commission amount to beneficiary
+            if (commission.beneficiary_type === "AGENT") {
+                // For agents, credit directly to their commission_balance field
+                const agent = await AgentModel.findOne({
+                    $or: [
+                        { agent_id: commission.beneficiary_id },
+                        { agent_id: String(commission.beneficiary_id) }
+                    ]
                 });
-            } else {
-                // No account found - mark as failed
-                commissionRecord.status = "FAILED";
-                commissionRecord.failure_reason = "No active account found for beneficiary";
-                await commissionRecord.save();
 
-                results.failed.push({
-                    commission_id: commissionId,
-                    beneficiary_id: commission.beneficiary_id,
-                    reason: "No active account found",
+                if (agent) {
+                    // Update agent's commission balance
+                    agent.commission_balance = (parseFloat(agent.commission_balance) || 0) + commission.commission_amount;
+                    await agent.save();
+
+                    // Update commission record as credited
+                    commissionRecord.status = "CREDITED";
+                    commissionRecord.credited_at = new Date();
+                    await commissionRecord.save();
+
+                    console.log(`✅ Commission credited to agent ${commission.beneficiary_id}: ₹${commission.commission_amount}`);
+
+                    results.successful.push({
+                        commission_id: commissionId,
+                        beneficiary_id: commission.beneficiary_id,
+                        amount: commission.commission_amount,
+                    });
+                } else {
+                    // Agent not found - mark as failed
+                    commissionRecord.status = "FAILED";
+                    commissionRecord.failure_reason = "Agent not found";
+                    await commissionRecord.save();
+
+                    results.failed.push({
+                        commission_id: commissionId,
+                        beneficiary_id: commission.beneficiary_id,
+                        reason: "Agent not found",
+                    });
+                }
+            } else {
+                // For members, credit to their commission_balance and optionally to account
+                const member = await MemberModel.findOne({
+                    $or: [
+                        { member_id: commission.beneficiary_id },
+                        { member_id: String(commission.beneficiary_id) }
+                    ]
                 });
+
+                if (member) {
+                    // Update member's commission balance
+                    member.commission_balance = (parseFloat(member.commission_balance) || 0) + commission.commission_amount;
+                    await member.save();
+
+                    // Also try to credit their first active account if exists
+                    const beneficiaryAccount = await AccountsModel.findOne({
+                        $or: [
+                            { member_id: commission.beneficiary_id },
+                            { member_id: parseInt(commission.beneficiary_id) }
+                        ],
+                        status: "active",
+                    }).sort({ date_of_opening: 1 });
+
+                    if (beneficiaryAccount) {
+                        // Update account balance
+                        beneficiaryAccount.account_amount =
+                            (parseFloat(beneficiaryAccount.account_amount) || 0) + commission.commission_amount;
+                        await beneficiaryAccount.save();
+                    }
+
+                    // Update commission record as credited
+                    commissionRecord.status = "CREDITED";
+                    commissionRecord.credited_at = new Date();
+                    await commissionRecord.save();
+
+                    console.log(`✅ Commission credited to member ${commission.beneficiary_id}: ₹${commission.commission_amount}`);
+
+                    results.successful.push({
+                        commission_id: commissionId,
+                        beneficiary_id: commission.beneficiary_id,
+                        amount: commission.commission_amount,
+                    });
+                } else {
+                    // Member not found - mark as failed
+                    commissionRecord.status = "FAILED";
+                    commissionRecord.failure_reason = "Member not found";
+                    await commissionRecord.save();
+
+                    results.failed.push({
+                        commission_id: commissionId,
+                        beneficiary_id: commission.beneficiary_id,
+                        reason: "Member not found",
+                    });
+                }
             }
         } catch (error) {
             console.error("Error distributing commission:", error);
