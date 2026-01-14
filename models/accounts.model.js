@@ -68,7 +68,7 @@ const accountsSchema = mongoose.Schema(
     },
     account_amount: {
       type: Number,
-      default: null,
+      default: 0,
     },
     joint_member: {
       type: String,

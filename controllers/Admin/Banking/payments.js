@@ -74,35 +74,63 @@ const createPayment = async (req, res) => {
 
         // If account_details is provided, update account balance and create transaction
         if (account_details && account_details.account_id && amount > 0) {
-            // Update account balance - DEDUCT money for payment
-            const account = await AccountsModel.findOneAndUpdate(
-                { account_id: account_details.account_id },
-                { $inc: { account_amount: -amount } },
-                { new: true }
-            );
+            console.log(`📤 Payment: Processing account update for account_id: ${account_details.account_id}, amount: ${amount}`);
 
-            if (account) {
-                // Generate unique transaction ID using utility
-                const transId = await generateTransactionId();
+            // First, check if account exists and handle null account_amount
+            const existingAccount = await AccountsModel.findOne({ account_id: account_details.account_id });
 
-                // Create transaction record
-                await TransactionModel.create({
-                    transaction_id: transId,
-                    transaction_date: payment_date || new Date(),
-                    member_id: member_id,
-                    account_number: account_details.account_no,
-                    account_type: account_details.account_type,
-                    transaction_type: "Payment",
-                    description: payment_details || `Payment - ${newPaymentId}`,
-                    credit: 0,
-                    debit: amount,
-                    balance: account.account_amount,
-                    Name: paid_to,
-                    status: "Completed",
-                    reference_no: newPaymentId,
-                    collected_by: entered_by
-                });
+            if (!existingAccount) {
+                console.log(`❌ Account not found: ${account_details.account_id}`);
+            } else {
+                console.log(`📊 Existing account balance: ${existingAccount.account_amount}`);
+
+                // If account_amount is null, set it to 0 first
+                if (existingAccount.account_amount === null || existingAccount.account_amount === undefined) {
+                    await AccountsModel.updateOne(
+                        { account_id: account_details.account_id },
+                        { $set: { account_amount: 0 } }
+                    );
+                    console.log(`🔧 Initialized null account_amount to 0`);
+                }
+
+                // Update account balance - DEDUCT money for payment
+                const account = await AccountsModel.findOneAndUpdate(
+                    { account_id: account_details.account_id },
+                    { $inc: { account_amount: -amount } },
+                    { new: true }
+                );
+
+                if (account) {
+                    console.log(`✅ Account updated. New balance: ${account.account_amount}`);
+
+                    // Generate unique transaction ID using utility
+                    const transId = await generateTransactionId();
+                    console.log(`🔑 Generated transaction ID: ${transId}`);
+
+                    // Create transaction record
+                    const transaction = await TransactionModel.create({
+                        transaction_id: transId,
+                        transaction_date: payment_date || new Date(),
+                        member_id: member_id,
+                        account_number: account_details.account_no,
+                        account_type: account_details.account_type,
+                        transaction_type: "Payment",
+                        description: payment_details || `Payment - ${newPaymentId}`,
+                        credit: 0,
+                        debit: amount,
+                        balance: account.account_amount,
+                        Name: paid_to,
+                        status: "Completed",
+                        reference_no: newPaymentId,
+                        collected_by: entered_by
+                    });
+                    console.log(`📝 Transaction created: ${transaction.transaction_id}`);
+                } else {
+                    console.log(`❌ Failed to update account balance`);
+                }
             }
+        } else {
+            console.log(`ℹ️ Payment: No account update needed. account_details: ${JSON.stringify(account_details)}, amount: ${amount}`);
         }
 
         res.status(201).json({

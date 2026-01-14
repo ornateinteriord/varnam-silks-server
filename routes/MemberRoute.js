@@ -5,7 +5,7 @@ const authorizeRoles = require("../middlewares/authorizeRole");
 const { getMemberById } = require("../controllers/Admin/Member");
 const { getMyAccounts, updateMyProfile, getMemberBasicInfo, getMemberAccountsPublic, getMemberTransactions } = require("../controllers/Member");
 
-router.get('/get-member/:memberId', Authenticated, authorizeRoles(["USER"]), getMemberById)
+router.get('/get-member/:memberId', Authenticated, authorizeRoles(["USER", "ADMIN"]), getMemberById)
 
 // Member dashboard routes  
 router.get('/get-my-accounts', Authenticated, authorizeRoles(["USER"]), getMyAccounts);
