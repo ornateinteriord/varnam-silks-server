@@ -3,7 +3,7 @@ const { createAgent, getAgents, updateAgent, getAgentById } = require("../contro
 const { createInterest, getInterests, updateInterest, getInterestById } = require("../controllers/Admin/Interest/index");
 const { getInterestsByAccountGroup, createAccount, getAccounts, getAccountById, updateAccount, getAccountBooks, getAccountGroups, getPreMaturityAccounts, getPostMaturityAccounts, getAccountTransactions, getAccountsForAssignment, updateAccountAssignment } = require("../controllers/Admin/Account/index");
 const { getDashboardCounts, getRecentData } = require("../controllers/Admin/Dashboard/index");
-const { migrateExistingMembersHierarchy } = require("../utils/hierarchyHelper");
+const { migrateExistingMembersHierarchy, migrateExistingAgentsHierarchy } = require("../utils/hierarchyHelper");
 const Authenticated = require("../middlewares/auth");
 const authorizeRoles = require("../middlewares/authorizeRole");
 const { createMaturityPayment } = require("../controllers/Admin/Banking/cashTransaction");
@@ -17,10 +17,39 @@ router.put('/update-member/:memberId', Authenticated, authorizeRoles(["ADMIN"]),
 router.get('/get-member/:memberId', Authenticated, authorizeRoles(["ADMIN", 'AGENT']), getMemberById)
 router.put('/member/:memberId/set-hierarchy', Authenticated, authorizeRoles(["ADMIN"]), setIntroducerHierarchy)
 
-// 🔧 FIX HIERARCHY - Run once to fix all existing members
+// 🔧 FIX HIERARCHY - Run to rebuild all member and agent hierarchies
+// Add ?force=true to force rebuild even existing hierarchies
 router.get('/fix-all-hierarchies', Authenticated, authorizeRoles(["ADMIN"]), async (req, res) => {
-    const result = await migrateExistingMembersHierarchy();
-    res.json(result);
+    try {
+        const forceRebuild = req.query.force === 'true';
+        console.log(`\n${"=".repeat(60)}`);
+        console.log(`🔧 REBUILDING ALL HIERARCHIES (force: ${forceRebuild})`);
+        console.log(`${"=".repeat(60)}\n`);
+
+        const memberResult = await migrateExistingMembersHierarchy(forceRebuild);
+        const agentResult = await migrateExistingAgentsHierarchy(forceRebuild);
+
+        console.log(`\n${"=".repeat(60)}`);
+        console.log(`✅ HIERARCHY REBUILD COMPLETE`);
+        console.log(`   Members: ${memberResult.updated} updated, ${memberResult.skipped || 0} skipped`);
+        console.log(`   Agents: ${agentResult.updated} updated, ${agentResult.skipped || 0} skipped`);
+        console.log(`${"=".repeat(60)}\n`);
+
+        res.json({
+            success: true,
+            message: 'All hierarchies rebuilt successfully',
+            forceRebuild,
+            members: memberResult,
+            agents: agentResult
+        });
+    } catch (error) {
+        console.error('Error rebuilding hierarchies:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to rebuild hierarchies',
+            error: error.message
+        });
+    }
 });
 
 // Agent routes

@@ -219,9 +219,18 @@ const calculateCommissions = async (transaction) => {
         const commissions = [];
 
         // Calculate commission for each level
+        // Track which beneficiaries have already received commission to avoid duplicates
+        const processedBeneficiaries = new Set();
+
         for (let i = 0; i < Math.min(hierarchy.length, 7); i++) {
             const level = i + 1;
             const beneficiaryId = hierarchy[i];
+
+            // Skip if this beneficiary has already received commission at a higher level
+            if (processedBeneficiaries.has(beneficiaryId)) {
+                console.log(`Skipping duplicate beneficiary at level ${level}: ${beneficiaryId} (already processed at higher level)`);
+                continue;
+            }
 
             // Find the beneficiary
             let beneficiary = await MemberModel.findOne({ member_id: beneficiaryId });
@@ -270,13 +279,20 @@ const calculateCommissions = async (transaction) => {
             // Calculate commission amount
             const commissionAmount = (transactionAmount * commissionRate) / 100;
 
+            // Mark this beneficiary as processed
+            processedBeneficiaries.add(beneficiaryId);
+
+            // Get beneficiary name with fallback for empty/null names
+            const beneficiaryName = beneficiary.name?.trim() || `Member-${beneficiaryId}`;
+            const sourceName = sourceUser.name?.trim() || `Member-${memberId}`;
+
             commissions.push({
                 level,
                 beneficiary_id: beneficiaryId,
-                beneficiary_name: beneficiary.name,
+                beneficiary_name: beneficiaryName,
                 beneficiary_type: beneficiaryType,
                 source_id: memberId,
-                source_name: sourceUser.name,
+                source_name: sourceName,
                 source_type: sourceType,
                 source_citizen_type: citizenType,
                 is_senior_citizen: isSenior,

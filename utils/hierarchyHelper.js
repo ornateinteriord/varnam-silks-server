@@ -99,24 +99,38 @@ const addAgentHierarchy = async (agentData) => {
 /**
  * Update existing members to build their hierarchy
  * This is a one-time migration function
+ * @param {boolean} forceRebuild - If true, rebuild all hierarchies even if they exist
  */
-const migrateExistingMembersHierarchy = async () => {
+const migrateExistingMembersHierarchy = async (forceRebuild = false) => {
     try {
         console.log("Starting member hierarchy migration...");
+        console.log(`Force rebuild: ${forceRebuild}`);
 
         const members = await MemberModel.find({ introducer: { $ne: null } });
         let updated = 0;
+        let skipped = 0;
 
         for (const member of members) {
-            if (!member.introducer_hierarchy || member.introducer_hierarchy.length === 0) {
+            // Check if we should update this member
+            const shouldUpdate = forceRebuild || !member.introducer_hierarchy || member.introducer_hierarchy.length === 0;
+
+            if (shouldUpdate) {
+                const oldHierarchy = member.introducer_hierarchy?.length || 0;
                 await addMemberHierarchy(member);
                 await member.save();
+                const newHierarchy = member.introducer_hierarchy?.length || 0;
+                console.log(`  Updated ${member.member_id} (${member.name}): ${oldHierarchy} -> ${newHierarchy} levels`);
+                if (newHierarchy > 0) {
+                    console.log(`    Hierarchy: ${member.introducer_hierarchy.join(' -> ')}`);
+                }
                 updated++;
+            } else {
+                skipped++;
             }
         }
 
-        console.log(`Migration complete: ${updated} members updated`);
-        return { success: true, updated };
+        console.log(`Migration complete: ${updated} members updated, ${skipped} skipped`);
+        return { success: true, updated, skipped };
     } catch (error) {
         console.error("Error migrating member hierarchy:", error);
         return { success: false, error: error.message };
@@ -126,24 +140,38 @@ const migrateExistingMembersHierarchy = async () => {
 /**
  * Update existing agents to build their hierarchy
  * This is a one-time migration function
+ * @param {boolean} forceRebuild - If true, rebuild all hierarchies even if they exist
  */
-const migrateExistingAgentsHierarchy = async () => {
+const migrateExistingAgentsHierarchy = async (forceRebuild = false) => {
     try {
         console.log("Starting agent hierarchy migration...");
+        console.log(`Force rebuild: ${forceRebuild}`);
 
         const agents = await AgentModel.find({ introducer: { $ne: null } });
         let updated = 0;
+        let skipped = 0;
 
         for (const agent of agents) {
-            if (!agent.introducer_hierarchy || agent.introducer_hierarchy.length === 0) {
+            // Check if we should update this agent
+            const shouldUpdate = forceRebuild || !agent.introducer_hierarchy || agent.introducer_hierarchy.length === 0;
+
+            if (shouldUpdate) {
+                const oldHierarchy = agent.introducer_hierarchy?.length || 0;
                 await addAgentHierarchy(agent);
                 await agent.save();
+                const newHierarchy = agent.introducer_hierarchy?.length || 0;
+                console.log(`  Updated ${agent.agent_id} (${agent.name}): ${oldHierarchy} -> ${newHierarchy} levels`);
+                if (newHierarchy > 0) {
+                    console.log(`    Hierarchy: ${agent.introducer_hierarchy.join(' -> ')}`);
+                }
                 updated++;
+            } else {
+                skipped++;
             }
         }
 
-        console.log(`Migration complete: ${updated} agents updated`);
-        return { success: true, updated };
+        console.log(`Migration complete: ${updated} agents updated, ${skipped} skipped`);
+        return { success: true, updated, skipped };
     } catch (error) {
         console.error("Error migrating agent hierarchy:", error);
         return { success: false, error: error.message };
