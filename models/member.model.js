@@ -77,7 +77,7 @@ const memberSchema = mongoose.Schema(
     },
     introducer: {
       type: String,
-      default: null,
+      required: [true, "Introducer is required"],
     },
     introducer_name: {
       type: String,

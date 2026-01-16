@@ -36,17 +36,26 @@ const createMember = async (req, res) => {
         } = req.body;
 
         // Auto-increment member_id: Find max member_id and add 1
+        // Starting from 105150 if no members exist
         const lastMember = await MemberModel.findOne()
             .sort({ member_id: -1 })
             .limit(1);
 
-        let newMemberId = "1";
+        let newMemberId = "105150"; // Start from 105150
         if (lastMember && lastMember.member_id) {
             // Extract numeric part and increment
             const lastId = parseInt(lastMember.member_id);
             if (!isNaN(lastId)) {
                 newMemberId = (lastId + 1).toString();
             }
+        }
+
+        // Check if introducer is provided (mandatory)
+        if (!introducer) {
+            return res.status(400).json({
+                success: false,
+                message: "Introducer is required when creating a member"
+            });
         }
 
         // Check if contactno already exists
