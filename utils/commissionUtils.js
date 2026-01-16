@@ -95,15 +95,6 @@ const validateCommissionEligibility = (transaction, config) => {
     }
 
     console.log(`   Transaction Amount: ₹${transaction.credit}`);
-    console.log(`   Minimum Required: ₹${config.minimumTransactionAmount}`);
-
-    if (transaction.credit < config.minimumTransactionAmount) {
-        console.log("   Result: ❌ Not Eligible - Below minimum amount");
-        return {
-            eligible: false,
-            reason: `Transaction amount below minimum (${config.minimumTransactionAmount})`,
-        };
-    }
 
     // Check if account type is commission-eligible (FD, RD, Pigmy)
     const accountTypeId = transaction.account_type?.toString();
