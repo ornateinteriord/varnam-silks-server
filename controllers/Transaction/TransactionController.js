@@ -185,7 +185,7 @@ exports.createPaymentOrder = async (req, res) => {
                 customer_email: email || "customer@example.com"
             },
             order_meta: {
-                return_url: `${process.env.FRONTEND_URL}/user/wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
+                return_url: `${process.env.FRONTEND_URL}/user/account-wallet?order_id={order_id}&order_status={order_status}&member_id=${member_id}`,
                 notify_url: `${process.env.BACKEND_URL}/transaction/webhook/cashfree`
             },
             order_tags: {
