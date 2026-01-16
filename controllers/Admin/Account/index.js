@@ -160,6 +160,49 @@ const createAccount = async (req, res) => {
             joint_member
         });
 
+        // If account is created with initial amount > 0, create transaction and trigger commission
+        if (account_amount && account_amount > 0) {
+            try {
+                const TransactionModel = require("../../../models/transaction.model");
+                const generateTransactionId = require("../../../utils/generateTransactionId");
+                const { processTransactionCommission } = require("../../../utils/commissionUtils");
+
+                // Get member details
+                const member = await MemberModel.findOne({ member_id: member_id });
+
+                // Generate transaction ID
+                const transId = await generateTransactionId();
+
+                // Create transaction record for initial deposit
+                const transaction = await TransactionModel.create({
+                    transaction_id: transId,
+                    transaction_date: date_of_opening || new Date(),
+                    member_id: member_id,
+                    account_number: newAccountNo,
+                    account_type: account_type,
+                    transaction_type: "Account Opening",
+                    description: `Initial deposit - Account ${newAccountNo}`,
+                    credit: account_amount,
+                    debit: 0,
+                    balance: account_amount,
+                    Name: member ? member.name : null,
+                    mobileno: member ? member.contactno : null,
+                    status: "Completed",
+                    collected_by: entered_by
+                });
+
+                console.log(`📝 Transaction created for account opening: ${transId}`);
+
+                // Process commission for introducers
+                console.log("💰 Processing commission for account opening deposit...");
+                const commissionResult = await processTransactionCommission(transaction);
+                console.log("💰 Commission processing result:", commissionResult);
+            } catch (txError) {
+                console.error("❌ Error creating transaction/commission for account opening:", txError.message);
+                // Don't fail account creation if transaction/commission fails
+            }
+        }
+
         res.status(201).json({
             success: true,
             message: "Account created successfully",

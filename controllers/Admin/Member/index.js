@@ -41,7 +41,7 @@ const createMember = async (req, res) => {
             .sort({ member_id: -1 })
             .limit(1);
 
-        let newMemberId = "105150"; // Start from 105150
+        let newMemberId = "105160"; // Start from 105160
         if (lastMember && lastMember.member_id) {
             // Extract numeric part and increment
             const lastId = parseInt(lastMember.member_id);
@@ -109,11 +109,12 @@ const createMember = async (req, res) => {
         const userPassword = contactno; // Password is contact number
         try {
             // Find the last user_id to auto-increment
+            // Starting from 105160 if no users exist
             const lastUser = await UserModel.findOne()
                 .sort({ user_id: -1 })
                 .limit(1);
 
-            let newUserId = "1";
+            let newUserId = "105160"; // Start from 105160
             if (lastUser && lastUser.user_id) {
                 const lastId = parseInt(lastUser.user_id);
                 if (!isNaN(lastId)) {

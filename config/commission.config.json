@@ -1,6 +1,6 @@
 {
     "enabled": true,
-    "minimumTransactionAmount": 100,
+    "minimumTransactionAmount": 0,
     "description": "Multi-level commission configuration based on deposit scheme interest rates with Senior Citizen support",
     "seniorCitizenAgeThreshold": 60,
     "depositTenureRates": {
