@@ -6,60 +6,140 @@ const {
 } = require("../../utils/EmailService");
 const { generateOTP, storeOTP, verifyOTP } = require("../../utils/OtpService");
 const { generateMSCSEmail } = require("../../utils/generateMSCSEmail");
+const { addMemberHierarchy } = require("../../utils/hierarchyHelper");
+const { generateWelcomeEmail } = require("../../utils/emailTemplates");
 
 const recoverySubject = "MSI - Password Recovery";
 const resetPasswordSubject = "MSI - OTP Verification";
 
-const generateUniqueMemberId = async () => {
-  while (true) {
-    const memberId = `MSI${Math.floor(100000 + Math.random() * 900000)}`;
-    if (!(await MemberModel.exists({ member_id: memberId }))) {
-      return memberId;
-    }
-  }
-};
-
 const signup = async (req, res) => {
   try {
-    const { emailid, password, name, ...otherDetails } = req.body;
-    // const existingUser = await MemberModel.findOne({ emailid });
-    // if (existingUser) {
-    //   return res.status(400).json({ success: false, message: "Email already in use" });
-    // }
-
-    const memberId = await generateUniqueMemberId();
-
-    const newMember = new MemberModel({
-      member_id: memberId,
+    const {
+      name,
       emailid,
       password,
+      contactno,
+      pincode,
+      gender,
+      introducer,
+      introducer_name,
+      address,
+      father_name,
+      dob,
+      pan_no,
+      aadharcard_no,
+    } = req.body;
+
+    // Validate required fields
+    if (!name || !contactno || !introducer) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: name, contactno, introducer"
+      });
+    }
+
+    // Check if contactno already exists
+    const existingContact = await MemberModel.findOne({ contactno });
+    if (existingContact) {
+      return res.status(400).json({
+        success: false,
+        message: "Contact number already registered. Please login instead."
+      });
+    }
+
+    // Auto-increment member_id (same logic as admin createMember)
+    const lastMember = await MemberModel.findOne()
+      .sort({ member_id: -1 })
+      .limit(1);
+
+    let newMemberId = "105160";
+    if (lastMember && lastMember.member_id) {
+      const lastId = parseInt(lastMember.member_id);
+      if (!isNaN(lastId)) {
+        newMemberId = (lastId + 1).toString();
+      }
+    }
+
+    // Prepare member data
+    const memberData = {
+      member_id: newMemberId,
       name,
-      ...otherDetails,
-    });
-    await newMember.save();
+      emailid,
+      contactno,
+      gender,
+      address,
+      father_name,
+      dob,
+      pan_no,
+      aadharcard_no,
+      pincode,
+      introducer,
+      introducer_name,
+      role: "USER",
+      status: "pending", // New registrations start as pending for admin approval
+      commission_eligible: true,
+    };
 
+    // Build introducer hierarchy
+    const memberDataWithHierarchy = await addMemberHierarchy(memberData);
+
+    // Create member
+    const newMember = await MemberModel.create(memberDataWithHierarchy);
+
+    // Create user entry (password = contact number for public signup)
+    const userPassword = password || contactno;
     try {
-      const { welcomeMessage, welcomeSubject } = generateMSCSEmail(memberId, password, name);
-      const textContent = `Dear ${name}, Your account registration with MSI has been completed. Member ID: ${memberId}, Password: ${password}. Your account is under verification process.`;
+      const lastUser = await UserModel.findOne()
+        .sort({ user_id: -1 })
+        .limit(1);
 
-      await sendMail(emailid, welcomeSubject, welcomeMessage, textContent);
-    } catch (emailError) {
-      // Email sending failed but continue
+      let newUserId = "105160";
+      if (lastUser && lastUser.user_id) {
+        const lastId = parseInt(lastUser.user_id);
+        if (!isNaN(lastId)) {
+          newUserId = (lastId + 1).toString();
+        }
+      }
+
+      await UserModel.create({
+        id: newUserId,
+        user_id: newMemberId,
+        user_name: newMemberId,
+        reference_id: newMemberId,
+        password: userPassword,
+        user_role: "USER",
+        user_status: "active"
+      });
+
+      console.log(`✅ User created for member ${newMemberId}`);
+    } catch (userError) {
+      console.error("❌ Error creating user entry:", userError);
+    }
+
+    // Send welcome email
+    if (emailid) {
+      try {
+        const emailTemplate = generateWelcomeEmail(name, newMemberId, userPassword, 'Member');
+        await sendMail(emailid, emailTemplate.subject, emailTemplate.html, emailTemplate.text);
+        console.log(`✅ Welcome email sent to ${emailid}`);
+      } catch (emailError) {
+        console.error(`❌ Error sending welcome email:`, emailError.message);
+      }
     }
 
     res.status(201).json({
       success: true,
-      message: "Signup successful. Credentials sent to email.",
-      user: {
-        member_id: newMember.member_id,
-        emailid: newMember.emailid,
-        name: newMember.name
-      },
+      message: "Registration successful! Your account is pending verification.",
+      data: {
+        member_id: newMemberId,
+        name: name,
+        emailid: emailid
+      }
     });
 
   } catch (error) {
     console.error("Signup Error:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    res.status(500).json({ success: false, message: error.message || "Registration failed" });
   }
 };
 
