@@ -73,11 +73,17 @@ const buildIntroducerHierarchy = async (introducerId, introducerType) => {
 
         // Add the introducer's hierarchy (up to 6 more levels for total of 7)
         if (introducer.introducer_hierarchy && introducer.introducer_hierarchy.length > 0) {
-            const existingHierarchy = introducer.introducer_hierarchy.slice(0, 6);
+            // Filter out any duplicates - don't include introducerId again if it's already in their hierarchy
+            const existingHierarchy = introducer.introducer_hierarchy
+                .filter(id => id !== introducerId && id !== String(introducerId)) // Remove duplicates
+                .slice(0, 6);
             hierarchy.push(...existingHierarchy);
         }
 
-        return hierarchy;
+        // Ensure no duplicates in final hierarchy (just in case)
+        const uniqueHierarchy = [...new Set(hierarchy.map(String))];
+
+        return uniqueHierarchy.slice(0, 7); // Max 7 levels
     } catch (error) {
         console.error("Error building introducer hierarchy:", error);
         return introducerId ? [introducerId] : [];
@@ -244,22 +250,27 @@ const calculateCommissions = async (transaction) => {
             }
 
             // Get commission rate for this level and account type
-            const levelConfig = config.levels.find((l) => l.level === level);
+            // Use new commissionLevels structure (same rate for everyone - no senior citizen differentiation)
+            const commissionLevels = config.commissionLevels?.levels || config.levels || [];
+            const levelConfig = commissionLevels.find((l) => l.level === level);
             if (!levelConfig) {
                 console.log(`No config found for level ${level}`);
                 continue;
             }
 
-            // Get rate based on citizen type (new structure) or fallback to old structure
+            // Get rate directly (new simplified structure) or from old rates structure
             let commissionRate;
-            const rateConfig = levelConfig.rates[accountTypeName];
-
-            if (typeof rateConfig === 'object' && rateConfig !== null) {
-                // New structure with general/seniorCitizen
-                commissionRate = rateConfig[citizenType];
-            } else {
-                // Old structure with direct rate
-                commissionRate = rateConfig;
+            if (levelConfig[accountTypeName] !== undefined) {
+                // New simplified structure: { level: 1, FD: 4.50, RD: 4.50, ... }
+                commissionRate = levelConfig[accountTypeName];
+            } else if (levelConfig.rates) {
+                // Old structure with rates object
+                const rateConfig = levelConfig.rates[accountTypeName];
+                if (typeof rateConfig === 'object' && rateConfig !== null) {
+                    commissionRate = rateConfig[citizenType];
+                } else {
+                    commissionRate = rateConfig;
+                }
             }
 
             if (commissionRate === undefined || commissionRate === null) {
