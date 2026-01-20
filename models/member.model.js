@@ -33,6 +33,7 @@ const memberSchema = mongoose.Schema(
     dob: {
       type: Date,
       required: true,
+      // hyy
     },
     age: {
       type: Number,
