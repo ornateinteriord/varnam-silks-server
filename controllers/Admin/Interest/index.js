@@ -4,14 +4,34 @@ const InterestModel = require("../../../models/interest.model");
 const createInterest = async (req, res) => {
     try {
         const {
-            ref_id,
+            plan_type,
             interest_name,
-            interest_rate,
             duration,
+            interest_rate_general,
+            interest_rate_senior,
+            minimum_deposit,
             from_date,
             to_date,
             status
         } = req.body;
+
+        // Validate required fields
+        if (!plan_type || !interest_name || duration === undefined ||
+            interest_rate_general === undefined || interest_rate_senior === undefined) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields: plan_type, interest_name, duration, interest_rate_general, and interest_rate_senior are required"
+            });
+        }
+
+        // Validate plan_type enum
+        const validPlanTypes = ["FD", "RD", "PIGMY", "SAVING"];
+        if (!validPlanTypes.includes(plan_type)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid plan_type. Must be one of: ${validPlanTypes.join(", ")}`
+            });
+        }
 
         // Auto-increment interest_id with INT prefix: Find max interest_id and add 1
         const lastInterest = await InterestModel.findOne()
@@ -33,12 +53,14 @@ const createInterest = async (req, res) => {
         // Create new interest with auto-generated interest_id
         const newInterest = await InterestModel.create({
             interest_id: newInterestId,
-            ref_id,
+            plan_type,
             interest_name,
-            interest_rate,
             duration,
-            from_date,
-            to_date,
+            interest_rate_general,
+            interest_rate_senior,
+            minimum_deposit: minimum_deposit || 0,
+            from_date: from_date || new Date(),
+            to_date: to_date || null,
             status: status || "active"
         });
 
@@ -71,7 +93,7 @@ const getInterests = async (req, res) => {
             filter.$or = [
                 { interest_id: { $regex: search, $options: "i" } },
                 { interest_name: { $regex: search, $options: "i" } },
-                { ref_id: { $regex: search, $options: "i" } }
+                { plan_type: { $regex: search, $options: "i" } }
             ];
         }
 

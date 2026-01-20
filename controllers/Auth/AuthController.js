@@ -129,7 +129,7 @@ const signup = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Registration successful! Your account is pending verification.",
+      message: "Registration successful!.",
       data: {
         member_id: newMemberId,
         name: name,

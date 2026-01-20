@@ -32,7 +32,7 @@ const memberSchema = mongoose.Schema(
     },
     dob: {
       type: Date,
-      default: null,
+      required: true,
     },
     age: {
       type: Number,
