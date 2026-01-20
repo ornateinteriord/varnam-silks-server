@@ -14,7 +14,11 @@ const interestSchema = mongoose.Schema(
       type: String,
       default: null,
     },
-    interest_rate: {
+    interest_rate_general: {
+      type: Number,
+      default: null,
+    },
+    interest_rate_senior: {
       type: Number,
       default: null,
     },

@@ -319,10 +319,245 @@ const getMemberTransactions = async (req, res) => {
     }
 };
 
+// Get all active account groups
+const getMemberAccountGroups = async (req, res) => {
+    try {
+        const AccountGroupModel = require("../../models/accountGroup.model");
+        const accountGroups = await AccountGroupModel.find({ status: "active" })
+            .sort({ account_group_name: 1 });
+
+        res.status(200).json({
+            success: true,
+            message: "Account groups fetched successfully",
+            data: accountGroups
+        });
+    } catch (error) {
+        console.error("Error fetching account groups:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch account groups",
+            error: error.message
+        });
+    }
+};
+
+// Get interests by account group
+const getMemberInterestsByAccountGroup = async (req, res) => {
+    try {
+        const { account_group_id } = req.params;
+        const InterestModel = require("../../models/interest.model");
+
+        if (!account_group_id) {
+            return res.status(400).json({
+                success: false,
+                message: "Account group ID is required"
+            });
+        }
+
+        const interests = await InterestModel.find({
+            ref_id: account_group_id,
+            status: "active"
+        }).sort({ createdAt: -1 });
+
+        res.status(200).json({
+            success: true,
+            message: "Interests fetched successfully",
+            data: interests
+        });
+    } catch (error) {
+        console.error("Error fetching interests:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch interests",
+            error: error.message
+        });
+    }
+};
+
+// Create a new member account (Self-Service)
+const createMemberAccount = async (req, res) => {
+    try {
+        const {
+            account_type, // This is account_group_id
+            account_operation,
+            interest_rate,
+            duration,
+            date_of_maturity,
+            account_amount
+        } = req.body;
+
+        // Get member_id from authenticated user
+        const memberId = req.user.memberId || req.user.userId;
+
+        if (!memberId) {
+            return res.status(400).json({
+                success: false,
+                message: "Member ID not found in token"
+            });
+        }
+
+        if (!account_type) {
+            return res.status(400).json({
+                success: false,
+                message: "Account Type is required"
+            });
+        }
+
+        const AccountGroupModel = require("../../models/accountGroup.model");
+
+        // Get the account group to determine the prefix for account_no
+        const accountGroup = await AccountGroupModel.findOne({
+            account_group_id: account_type
+        });
+
+        if (!accountGroup) {
+            return res.status(404).json({
+                success: false,
+                message: "Account type not found"
+            });
+        }
+
+        // Check if member already has an account of this type (active or pending)
+        const existingAccount = await AccountsModel.findOne({
+            member_id: memberId,
+            account_type: account_type,
+            status: { $nin: ["closed", "inactive"] }
+        });
+
+        if (existingAccount) {
+            return res.status(409).json({
+                success: false,
+                message: `You already have an active ${accountGroup.account_group_name} account (${existingAccount.account_no || existingAccount.account_id}).`
+            });
+        }
+
+        // --- ACCOUNT ID & NUMBER GENERATION (Same as Admin) ---
+
+        // Auto-increment account_id with ACC prefix
+        const lastAccount = await AccountsModel.findOne()
+            .sort({ account_id: -1 })
+            .limit(1);
+
+        let newAccountId = "ACC000001";
+        if (lastAccount && lastAccount.account_id) {
+            const numericPart = lastAccount.account_id.replace(/^ACC/, '');
+            const lastId = parseInt(numericPart);
+            if (!isNaN(lastId)) {
+                const nextId = lastId + 1;
+                newAccountId = `ACC${nextId.toString().padStart(6, '0')}`;
+            }
+        }
+
+        // Auto-increment account_no based on member_id and account_type
+        const lastAccountByType = await AccountsModel.findOne({
+            account_type: account_type
+        }).sort({ account_no: -1 }).limit(1);
+
+        let newAccountNo;
+        if (lastAccountByType && lastAccountByType.account_no) {
+            const lastAccountNo = parseInt(lastAccountByType.account_no);
+            if (!isNaN(lastAccountNo)) {
+                newAccountNo = lastAccountNo + 1;
+            } else {
+                const memberIdPrefix = memberId.toString().substring(0, 3);
+                const groupSuffix = "60";
+                newAccountNo = parseInt(`${memberIdPrefix}${groupSuffix}0001`);
+            }
+        } else {
+            const memberIdPrefix = memberId.toString().substring(0, 3);
+            const groupSuffix = "60";
+            newAccountNo = parseInt(`${memberIdPrefix}${groupSuffix}0001`);
+        }
+
+        // Create new account
+        const newAccount = await AccountsModel.create({
+            account_id: newAccountId,
+            // branch_id: "Main", // Default or fetch from member
+            date_of_opening: new Date(),
+            member_id: memberId,
+            account_type,
+            account_no: newAccountNo,
+            account_operation: account_operation || "Single",
+            // introducer: null, // Member self-service often doesn't specify introducer directly here, or it comes from Member profile
+            entered_by: memberId, // Created by self
+            // ref_id,
+            interest_rate: interest_rate || 0,
+            duration: duration || 0,
+            date_of_maturity: date_of_maturity,
+            date_of_close: null,
+            status: "active", // Or pending approval? user didn't specify, assuming active for now
+            // assigned_to: null,
+            account_amount: account_amount || 0,
+            // joint_member: null
+        });
+
+        // Fetch member to get introducer for commission
+        const member = await MemberModel.findOne({ member_id: memberId });
+        // Update account with member's introducer if needed, or leave it for commission calculation
+
+        // If account is created with initial amount > 0, create transaction and trigger commission
+        if (account_amount && account_amount > 0) {
+            try {
+                const TransactionModel = require("../../models/transaction.model");
+                const generateTransactionId = require("../../utils/generateTransactionId");
+                const { processTransactionCommission } = require("../../utils/commissionUtils");
+
+                // Generate transaction ID
+                const transId = await generateTransactionId();
+
+                // Create transaction record for initial deposit
+                const transaction = await TransactionModel.create({
+                    transaction_id: transId,
+                    transaction_date: new Date(),
+                    member_id: memberId,
+                    account_number: newAccountNo,
+                    account_type: account_type,
+                    transaction_type: "Account Opening",
+                    description: `Initial deposit - Account ${newAccountNo}`,
+                    credit: account_amount,
+                    debit: 0,
+                    balance: account_amount,
+                    Name: member ? member.name : null,
+                    mobileno: member ? member.contactno : null,
+                    status: "Completed",
+                    collected_by: memberId // Self
+                });
+
+                console.log(`📝 Transaction created for self-service account opening: ${transId}`);
+
+                // Process commission for introducers
+                console.log("💰 Processing commission for account opening deposit...");
+                const commissionResult = await processTransactionCommission(transaction);
+                console.log("💰 Commission processing result:", commissionResult);
+            } catch (txError) {
+                console.error("❌ Error creating transaction/commission for account opening:", txError.message);
+                // Don't fail account creation if transaction/commission fails
+            }
+        }
+
+        res.status(201).json({
+            success: true,
+            message: "Account created successfully",
+            data: newAccount
+        });
+
+    } catch (error) {
+        console.error("Error creating member account:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to create account",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getMyAccounts,
     updateMyProfile,
     getMemberBasicInfo,
     getMemberAccountsPublic,
-    getMemberTransactions
+    getMemberTransactions,
+    getMemberAccountGroups,
+    getMemberInterestsByAccountGroup,
+    createMemberAccount
 };
