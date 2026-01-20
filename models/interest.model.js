@@ -1,18 +1,22 @@
 const mongoose = require("mongoose");
 
-const interestSchema = mongoose.Schema(
+const interestSchema = new mongoose.Schema(
   {
     interest_id: {
       type: String,
       required: true,
+      unique: true,
     },
-    ref_id: {
+
+    plan_type: {
       type: String,
-      default: null,
+      enum: ["FD", "RD", "PIGMY", "SAVING"],
+      required: true,
     },
+
     interest_name: {
       type: String,
-      default: null,
+      required: true,
     },
     interest_rate_general: {
       type: Number,
@@ -20,28 +24,39 @@ const interestSchema = mongoose.Schema(
     },
     interest_rate_senior: {
       type: Number,
-      default: null,
+      required: true,
     },
-    duration: {
+
+    interest_rate_senior: {
       type: Number,
-      default: null,
+      required: true,
     },
+
+    minimum_deposit: {
+      type: Number,
+      default: 0,
+    },
+
     from_date: {
       type: Date,
-      default: null,
+      default: new Date(),
     },
+
     to_date: {
       type: Date,
       default: null,
     },
+
     status: {
       type: String,
+      enum: ["active", "inactive"],
       default: "active",
     },
   },
-  { timestamps: true, collection: "interest_tbl" }
+  {
+    timestamps: true,
+    collection: "interest_tbl",
+  }
 );
 
-const InterestModel = mongoose.model("interest_tbl", interestSchema);
-module.exports = InterestModel;
-
+module.exports = mongoose.model("interest_tbl", interestSchema);

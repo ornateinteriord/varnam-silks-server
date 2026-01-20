@@ -58,6 +58,14 @@ const createMember = async (req, res) => {
             });
         }
 
+        // Check if dob is provided (mandatory)
+        if (!dob) {
+            return res.status(400).json({
+                success: false,
+                message: "Date of Birth (dob) is required"
+            });
+        }
+
         // Check if contactno already exists
         if (contactno) {
             const existingContact = await MemberModel.findOne({ contactno });

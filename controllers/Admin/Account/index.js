@@ -17,9 +17,40 @@ const getInterestsByAccountGroup = async (req, res) => {
             });
         }
 
-        // Find interests where ref_id matches the account_group_id
+        // Get the account group to find its name (which maps to plan_type in interest model)
+        const accountGroup = await AccountGroupModel.findOne({
+            account_group_id: account_group_id
+        });
+
+        if (!accountGroup) {
+            return res.status(404).json({
+                success: false,
+                message: "Account group not found"
+            });
+        }
+
+        // Map account_group_name to plan_type
+        // The interest model uses plan_type enum: ["FD", "RD", "PIGMY", "SAVING"]
+        const planTypeMapping = {
+            "FIXED DEPOSIT": "FD",
+            "FD": "FD",
+            "RECURRING DEPOSIT": "RD",
+            "RD": "RD",
+            "PIGMY": "PIGMY",
+            "PIGMY DEPOSIT": "PIGMY",
+            "SAVING": "SAVING",
+            "SAVINGS": "SAVING",
+            "SAVINGS BANK": "SAVING",
+            "SB": "SAVING"
+        };
+
+        // Try to match the account group name (case-insensitive)
+        const groupNameUpper = accountGroup.account_group_name?.toUpperCase() || "";
+        const planType = planTypeMapping[groupNameUpper] || groupNameUpper;
+
+        // Find interests where plan_type matches
         const interests = await InterestModel.find({
-            ref_id: account_group_id,
+            plan_type: planType,
             status: "active"
         }).sort({ createdAt: -1 });
 
