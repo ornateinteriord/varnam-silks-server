@@ -89,13 +89,39 @@ exports.getWithdrawalRequests = async (req, res) => {
             query.status = status;
         }
 
-        const requests = await WithdrawRequestModel.find(query).sort({ createdAt: -1 });
+        // Get withdrawal requests
+        const requests = await WithdrawRequestModel.find(query).sort({ createdAt: -1 }).lean();
 
-        // Populate member name if possible, or frontend fetches it.
-        // Let's return as is.
-        res.status(200).json({ success: true, data: requests });
+        // Fetch member details for each request
+        const MemberModel = require("../../models/member.model");
+
+        // Debug: Check if we can find any member
+        const sampleMember = await MemberModel.findOne({}).lean();
+        console.log("Sample member from DB:", sampleMember ? { member_id: sampleMember.member_id, name: sampleMember.name } : "No members found");
+
+        const enrichedRequests = await Promise.all(
+            requests.map(async (request) => {
+                console.log("Looking for member_id:", request.member_id, "Type:", typeof request.member_id);
+                const member = await MemberModel.findOne({ member_id: request.member_id }).lean();
+                console.log("Found member:", member ? member.name : "NOT FOUND");
+
+                return {
+                    ...request,
+                    member_details: member ? {
+                        name: member.name,
+                        contactno: member.contactno,
+                        bank_name: member.bank_name,
+                        account_number: member.account_number,
+                        ifsc_code: member.ifsc_code
+                    } : null
+                };
+            })
+        );
+
+        res.status(200).json({ success: true, data: enrichedRequests });
 
     } catch (error) {
+        console.error("getWithdrawalRequests error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };
