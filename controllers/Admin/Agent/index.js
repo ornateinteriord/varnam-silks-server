@@ -237,12 +237,34 @@ const getAgentById = async (req, res) => {
         const { agentId } = req.params;
 
         // Use direct findOne with $or to handle any data type
-        const agent = await AgentModel.findOne({
+        let agent = await AgentModel.findOne({
             $or: [
                 { agent_id: agentId },
                 { agent_id: agentId.toString() }
             ]
         });
+
+        if (!agent) {
+            // Fallback for manually inserted agents in admin_tbl
+            const mongoose = require("mongoose");
+            const db = mongoose.connection.db;
+            const searchRegex = new RegExp(`^${agentId}$`, "i");
+            const admin = await db.collection("admin_tbl").findOne({
+                $or: [
+                    { id: parseInt(agentId) || agentId },
+                    { username: searchRegex }
+                ]
+            });
+            
+            if (admin) {
+                agent = {
+                    ...admin,
+                    agent_id: admin.id,
+                    name: admin.username,
+                    role: admin.role || "AGENT"
+                };
+            }
+        }
 
         if (!agent) {
             return res.status(404).json({
