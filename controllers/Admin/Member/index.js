@@ -300,23 +300,35 @@ const getMemberById = async (req, res) => {
     try {
         const { memberId } = req.params;
 
-        // Convert to number if it's a valid number string
-        const memberIdAsNumber = parseInt(memberId, 10);
-        const isValidNumber = !isNaN(memberIdAsNumber) && memberIdAsNumber.toString() === memberId;
+        const searchRegex = new RegExp(`^${memberId}$`, "i");
 
-        // Build query conditions
-        const queryConditions = [
-            { member_id: memberId },  // As string
-        ];
-
-        if (isValidNumber) {
-            queryConditions.push({ member_id: memberIdAsNumber });
-        }
-
-        // Use $or to query for member_id
-        const member = await MemberModel.findOne({
-            $or: queryConditions
+        const db = require("mongoose").connection.db;
+        let member = await db.collection("member_tbl").findOne({
+            $or: [
+                { member_id: searchRegex },
+                { Member_id: searchRegex }
+            ]
         });
+
+        if (!member) {
+            // Check if it's an admin ID or username
+            const admin = await db.collection("admin_tbl").findOne({
+                $or: [
+                    { id: parseInt(memberId) || memberId },
+                    { username: searchRegex }
+                ]
+            });
+            
+            if (admin) {
+                // Map admin fields to expected member fields for the frontend sidebar
+                member = {
+                    ...admin,
+                    Name: admin.username,
+                    Member_id: admin.id,
+                    role: admin.role || "ADMIN"
+                };
+            }
+        }
 
         if (!member) {
             return res.status(404).json({

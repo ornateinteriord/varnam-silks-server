@@ -233,43 +233,78 @@ const resetPassword = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { username: rawUsername, password } = req.body;
+    const username = rawUsername ? rawUsername.trim() : "";
+    const searchRegex = new RegExp(`^${username}$`, "i");
 
-    // Find user by user_name
-    let user = await UserModel.findOne({ user_name: username }).lean();
+    // Find user by user_name in UserModel
+    let user = await UserModel.findOne({ user_name: searchRegex }).lean();
 
-    if (!user) {
-      // Fallback: Check MemberModel
-      user = await MemberModel.findOne({
-        $or: [
-          { member_id: username },
-          { Member_id: username }
-        ]
-      }).lean();
+    // Fetch the detailed member profile from member_tbl
+    const db = require("mongoose").connection.db;
+    const memberDetails = await db.collection("member_tbl").findOne({
+      $or: [
+        { member_id: searchRegex },
+        { Member_id: searchRegex },
+        { contactno: searchRegex },
+        { emailid: searchRegex },
+        { name: searchRegex },
+        { Name: searchRegex }
+      ]
+    });
+
+    const adminDetails = await db.collection("admin_tbl").findOne({
+      username: searchRegex
+    });
+
+    console.log(`[DEBUG QUERY] Searching for admin with regex:`, searchRegex);
+    console.log(`[DEBUG QUERY] adminDetails found:`, !!adminDetails);
+
+    if (!user && memberDetails) {
+      // Fallback: If not in UserModel but exists in member_tbl
+      user = memberDetails;
+    } else if (!user && adminDetails) {
+      // Fallback: If not in UserModel but exists in admin_tbl
+      user = adminDetails;
     }
 
     if (!user) {
+      console.log(`[DEBUG] Failed to find user, memberDetails, or adminDetails for username: '${username}'`);
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: `User not found (Search: '${username}')` });
     }
 
-    // Verify password
-    const isPasswordValid = password === user.password;
+    // Verify password (check UserModel, member_tbl, and admin_tbl)
+    const isPasswordValid = 
+      password === user.password || 
+      (memberDetails && password === memberDetails.password) ||
+      (adminDetails && (password === adminDetails.password || password === adminDetails.PASSWORD));
+
     if (!isPasswordValid) {
       return res
         .status(401)
         .json({ success: false, message: "Incorrect username or password" });
     }
 
-    const role = user.user_role || user.role || "USER";
-    const userId = user.user_id || user.member_id || user.Member_id;
-    const userName = user.user_name || user.name || user.Name || userId;
+    // Combine user auth data with member/admin details for the frontend
+    const finalUserData = { ...user, ...memberDetails, ...adminDetails };
+
+    const role = finalUserData.user_role || finalUserData.role || "USER";
+    const userId = finalUserData.user_id || finalUserData.Member_id || finalUserData.member_id || finalUserData.id;
+    const userName = finalUserData.user_name || finalUserData.Name || finalUserData.name || finalUserData.username || userId;
+
+    console.log("=== LOGIN DEBUG ===");
+    console.log("1. Username searched:", username);
+    console.log("2. Found in UserModel:", user ? "YES" : "NO", user);
+    console.log("3. Found in member_tbl:", memberDetails ? "YES" : "NO", memberDetails);
+    console.log("4. Final merged user data:", finalUserData);
+    console.log("===================");
 
     // Generate JWT token
     const token = jwt.sign(
       {
-        id: user._id,
+        id: finalUserData._id,
         role: role,
         userId: userId,
         user_name: userName,
@@ -281,7 +316,7 @@ const login = async (req, res) => {
     return res.status(200).json({
       success: true,
       role: role,
-      user: user,
+      user: finalUserData,
       token,
       message: `${role.charAt(0).toUpperCase() + role.slice(1).toLowerCase()} login successful`,
     });
