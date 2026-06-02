@@ -77,7 +77,7 @@ const createReceipt = async (req, res) => {
                 // If account_amount is null, set it to 0 first
                 if (existingAccount.account_amount === null || existingAccount.account_amount === undefined) {
                     await AccountsModel.updateOne(
-                        { account_id: account_details.account_id },
+                        { _id: existingAccount._id },
                         { $set: { account_amount: 0 } }
                     );
                     console.log(`🔧 Initialized null account_amount to 0`);
@@ -85,7 +85,7 @@ const createReceipt = async (req, res) => {
 
                 // Update account balance - ADD money for receipt
                 const account = await AccountsModel.findOneAndUpdate(
-                    { account_id: account_details.account_id },
+                    { _id: existingAccount._id },
                     { $inc: { account_amount: amount } },
                     { new: true }
                 );

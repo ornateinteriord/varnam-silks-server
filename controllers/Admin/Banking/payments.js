@@ -81,8 +81,14 @@ const createPayment = async (req, res) => {
         if (account_details && account_details.account_id && amount > 0) {
             console.log(`📤 Payment: Processing account update for account_id: ${account_details.account_id}, amount: ${amount}`);
 
+            const mongoose = require("mongoose");
+            const query = [{ account_id: account_details.account_id }];
+            if (mongoose.Types.ObjectId.isValid(account_details.account_id)) {
+                query.push({ _id: account_details.account_id });
+            }
+
             // First, check if account exists and handle null account_amount
-            const existingAccount = await AccountsModel.findOne({ account_id: account_details.account_id });
+            const existingAccount = await AccountsModel.findOne({ $or: query });
 
             if (!existingAccount) {
                 console.log(`❌ Account not found: ${account_details.account_id}`);
@@ -92,7 +98,7 @@ const createPayment = async (req, res) => {
                 // If account_amount is null, set it to 0 first
                 if (existingAccount.account_amount === null || existingAccount.account_amount === undefined) {
                     await AccountsModel.updateOne(
-                        { account_id: account_details.account_id },
+                        { _id: existingAccount._id },
                         { $set: { account_amount: 0 } }
                     );
                     console.log(`🔧 Initialized null account_amount to 0`);
@@ -100,7 +106,7 @@ const createPayment = async (req, res) => {
 
                 // Update account balance - DEDUCT money for payment
                 const account = await AccountsModel.findOneAndUpdate(
-                    { account_id: account_details.account_id },
+                    { _id: existingAccount._id },
                     { $inc: { account_amount: -amount } },
                     { new: true }
                 );
