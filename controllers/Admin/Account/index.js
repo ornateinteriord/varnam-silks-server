@@ -3,7 +3,7 @@ const InterestModel = require("../../../models/interest.model");
 const AccountGroupModel = require("../../../models/accountGroup.model");
 const AccountBookModel = require("../../../models/accountBook.model");
 const MemberModel = require("../../../models/member.model");
-
+// ok
 // Get interests by account_group_id
 const getInterestsByAccountGroup = async (req, res) => {
     try {
