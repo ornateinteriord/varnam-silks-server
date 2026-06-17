@@ -59,6 +59,7 @@ const allowedOrigins = [
   "https://demo-co-operative.vercel.app",
    "https://varnam-silks-ui.vercel.app",
   "https://varnamsilks.com",
+  "https://www.varnamsilks.biz",
   process.env.FRONTEND_URL,
   process.env.FRONTEND_URL_DEV,
   process.env.FRONTEND_URL_PROD,
