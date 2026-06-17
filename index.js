@@ -57,6 +57,8 @@ const allowedOrigins = [
   "http://localhost:5173",
   "https://msi-copy.vercel.app",
   "https://demo-co-operative.vercel.app",
+   "https://varnam-silks-ui.vercel.app",
+  "https://varnamsilks.com",
   process.env.FRONTEND_URL,
   process.env.FRONTEND_URL_DEV,
   process.env.FRONTEND_URL_PROD,
