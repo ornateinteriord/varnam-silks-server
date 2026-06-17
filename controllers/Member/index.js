@@ -392,7 +392,7 @@ const getMemberInterestsByAccountGroup = async (req, res) => {
 // Create a new member account (Self-Service)
 const createMemberAccount = async (req, res) => {
     try {
-        const {
+        let {
             account_type, // This is account_group_id
             account_operation,
             interest_rate,
@@ -412,24 +412,22 @@ const createMemberAccount = async (req, res) => {
         }
 
         if (!account_type) {
-            return res.status(400).json({
-                success: false,
-                message: "Account Type is required"
-            });
+            account_type = "AGP002"; // Default to RD (AGP002) instead of throwing error
         }
 
         const AccountGroupModel = require("../../models/accountGroup.model");
 
         // Get the account group to determine the prefix for account_no
-        const accountGroup = await AccountGroupModel.findOne({
+        let accountGroup = await AccountGroupModel.findOne({
             account_group_id: account_type
         });
 
         if (!accountGroup) {
-            return res.status(404).json({
-                success: false,
-                message: "Account type not found"
-            });
+            // Bypass strict validation as requested
+            accountGroup = {
+                account_group_name: account_type,
+                account_group_id: account_type
+            };
         }
 
         // Check if member already has an account of this type (active or pending)
