@@ -35,18 +35,29 @@ const createMember = async (req, res) => {
             commission_eligible
         } = req.body;
 
-        // Auto-increment member_id: Find max member_id and add 1
-        // Starting from 105150 if no members exist
-        const lastMember = await MemberModel.findOne()
+        // Auto-increment member_id: Find max member_id that starts with VS
+        const lastMemberLower = await MemberModel.findOne({ member_id: /^VS/i })
             .sort({ member_id: -1 })
-            .limit(1);
+            .lean();
 
-        let newMemberId = "105160"; // Start from 105160
-        if (lastMember && lastMember.member_id) {
-            // Extract numeric part and increment
-            const lastId = parseInt(lastMember.member_id);
-            if (!isNaN(lastId)) {
-                newMemberId = (lastId + 1).toString();
+        const lastMemberUpper = await MemberModel.findOne({ Member_id: /^VS/i })
+            .sort({ Member_id: -1 })
+            .lean();
+
+        let maxIdStr = null;
+        if (lastMemberLower && lastMemberLower.member_id) maxIdStr = lastMemberLower.member_id;
+        if (lastMemberUpper && lastMemberUpper.Member_id) {
+            if (!maxIdStr || lastMemberUpper.Member_id > maxIdStr) {
+                maxIdStr = lastMemberUpper.Member_id;
+            }
+        }
+
+        let newMemberId = "VS000001";
+        if (maxIdStr) {
+            const match = maxIdStr.match(/^VS(\d+)$/i);
+            if (match) {
+                const lastIdNum = parseInt(match[1], 10);
+                newMemberId = "VS" + (lastIdNum + 1).toString().padStart(6, "0");
             }
         }
 
@@ -116,17 +127,16 @@ const createMember = async (req, res) => {
         // Create user entry automatically
         const userPassword = contactno; // Password is contact number
         try {
-            // Find the last user_id to auto-increment
-            // Starting from 105160 if no users exist
-            const lastUser = await UserModel.findOne()
-                .sort({ user_id: -1 })
+            const lastUser = await UserModel.findOne({ id: /^VS/i })
+                .sort({ id: -1 })
                 .limit(1);
 
-            let newUserId = "105160"; // Start from 105160
-            if (lastUser && lastUser.user_id) {
-                const lastId = parseInt(lastUser.user_id);
-                if (!isNaN(lastId)) {
-                    newUserId = (lastId + 1).toString();
+            let newUserId = "VS000001";
+            if (lastUser && lastUser.id) {
+                const match = lastUser.id.match(/^VS(\d+)$/i);
+                if (match) {
+                    const lastIdNum = parseInt(match[1], 10);
+                    newUserId = "VS" + (lastIdNum + 1).toString().padStart(6, "0");
                 }
             }
 
@@ -406,9 +416,11 @@ const setIntroducerHierarchy = async (req, res) => {
         const introducer = await MemberModel.findOne({
             $or: [
                 { member_id: introducerId },
-                { member_id: parseInt(introducerId) }
+                { Member_id: introducerId },
+                { member_id: parseInt(introducerId) },
+                { Member_id: parseInt(introducerId) }
             ]
-        });
+        }).lean();
 
         if (!introducer) {
             return res.status(404).json({

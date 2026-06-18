@@ -219,12 +219,28 @@ const calculateCommissions = async (transaction) => {
         // Track which beneficiaries have already received commission to avoid duplicates
         const processedBeneficiaries = new Set();
 
-        for (let i = 0; i < Math.min(hierarchy.length, 7); i++) {
+        const isAccountOpening = transaction.transaction_type === "Account Opening";
+        const accountOpeningRates = { 1: 30, 2: 20, 3: 5, 4: 5, 5: 5, 6: 5, 7: 5 };
+        const monthlyDepositRates = { 1: 5, 2: 1, 3: 1, 4: 1, 5: 0.5, 6: 0.5, 7: 0.5 };
+        const COMPANY_ID = "VS000001";
+        
+        // For both account opening and regular deposits, calculate up to 7 levels
+        let numLevels = 7;
+
+        for (let i = 0; i < numLevels; i++) {
             const level = i + 1;
-            const beneficiaryId = hierarchy[i];
+            let beneficiaryId = hierarchy[i];
+
+            if (level === 7) {
+                beneficiaryId = COMPANY_ID;
+            } else if (!beneficiaryId) {
+                continue; // Skip if no introducer for levels 1-6
+            }
 
             // Skip if this beneficiary has already received commission at a higher level
-            if (processedBeneficiaries.has(beneficiaryId)) {
+            // Exceptions: Company ID at level 7 always gets it
+            const skipDuplicateCheck = level === 7;
+            if (processedBeneficiaries.has(beneficiaryId) && !skipDuplicateCheck) {
                 console.log(`Skipping duplicate beneficiary at level ${level}: ${beneficiaryId} (already processed at higher level)`);
                 continue;
             }
@@ -250,27 +266,12 @@ const calculateCommissions = async (transaction) => {
             }
 
             // Get commission rate for this level and account type
-            // Use new commissionLevels structure (same rate for everyone - no senior citizen differentiation)
-            const commissionLevels = config.commissionLevels?.levels || config.levels || [];
-            const levelConfig = commissionLevels.find((l) => l.level === level);
-            if (!levelConfig) {
-                console.log(`No config found for level ${level}`);
-                continue;
-            }
-
-            // Get rate directly (new simplified structure) or from old rates structure
             let commissionRate;
-            if (levelConfig[accountTypeName] !== undefined) {
-                // New simplified structure: { level: 1, FD: 4.50, RD: 4.50, ... }
-                commissionRate = levelConfig[accountTypeName];
-            } else if (levelConfig.rates) {
-                // Old structure with rates object
-                const rateConfig = levelConfig.rates[accountTypeName];
-                if (typeof rateConfig === 'object' && rateConfig !== null) {
-                    commissionRate = rateConfig[citizenType];
-                } else {
-                    commissionRate = rateConfig;
-                }
+            
+            if (isAccountOpening) {
+                commissionRate = accountOpeningRates[level];
+            } else {
+                commissionRate = monthlyDepositRates[level];
             }
 
             if (commissionRate === undefined || commissionRate === null) {

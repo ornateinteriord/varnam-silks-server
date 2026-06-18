@@ -157,7 +157,7 @@ const memberSchema = mongoose.Schema(
       default: null,
     },
   },
-  { timestamps: true, collection: "member_tbl" }
+  { timestamps: true, collection: "member_tbl", strict: false }
 );
 
 const MemberModel = mongoose.model("member_tbl", memberSchema);

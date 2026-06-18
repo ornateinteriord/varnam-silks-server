@@ -197,8 +197,73 @@ const getSponsers = async (req, res) => {
     }
 };
 
+// Get multi-level sponsors for the logged-in user
+const getMultiLevelSponsors = async (req, res) => {
+    try {
+        const memberId = req.user.userId;
+
+        if (!memberId) {
+            return res.status(400).json({
+                success: false,
+                message: "Member ID is required"
+            });
+        }
+
+        // Find all members who have this memberId in their introducer_hierarchy
+        const downline = await MemberModel.find({ introducer_hierarchy: memberId }).lean();
+
+        // Calculate levels
+        const levels = {};
+
+        downline.forEach(member => {
+            if (!member.introducer_hierarchy) return;
+            
+            // Find the index of memberId in the hierarchy
+            // Hierarchy is typically built from direct introducer outwards
+            // e.g., [directSponsorId, grandSponsorId, greatGrandSponsorId]
+            // If we find our memberId at index 0, this member is Level 1 to us
+            // If we find it at index 1, this member is Level 2 to us
+            const levelIndex = member.introducer_hierarchy.findIndex(id => String(id) === String(memberId));
+            
+            if (levelIndex !== -1) {
+                const level = levelIndex + 1; // 1-based level
+                
+                if (!levels[level]) {
+                    levels[level] = { level, total: 0, active: 0, pending: 0 };
+                }
+                
+                levels[level].total += 1;
+                
+                const status = (member.status || '').toLowerCase();
+                if (status === 'active') {
+                    levels[level].active += 1;
+                } else if (status === 'pending') {
+                    levels[level].pending += 1;
+                }
+            }
+        });
+
+        // Convert to array and sort by level
+        const data = Object.values(levels).sort((a, b) => a.level - b.level);
+
+        res.status(200).json({
+            success: true,
+            message: "Multi-level sponsorship data fetched successfully",
+            data: data
+        });
+    } catch (error) {
+        console.error("Error fetching multi-level sponsors:", error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch multi-level sponsorship data",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getUserTransactions,
     getCommissionTransactions,
-    getSponsers
+    getSponsers,
+    getMultiLevelSponsors
 };

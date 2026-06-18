@@ -14,13 +14,16 @@ const addMemberHierarchy = async (memberData) => {
             return memberData;
         }
 
-        // Determine introducer type (could be member or agent)
         let introducerType = "MEMBER";
-        let introducer = await MemberModel.findOne({ member_id: memberData.introducer });
+        let introducer = await MemberModel.findOne({ 
+            $or: [{ member_id: memberData.introducer }, { Member_id: memberData.introducer }]
+        }).lean();
 
         if (!introducer) {
             // Check if it's an agent
-            introducer = await AgentModel.findOne({ agent_id: memberData.introducer });
+            introducer = await AgentModel.findOne({ 
+                $or: [{ agent_id: memberData.introducer }, { Agent_id: memberData.introducer }]
+            }).lean();
             introducerType = "AGENT";
         }
 
@@ -35,8 +38,8 @@ const addMemberHierarchy = async (memberData) => {
         memberData.introducer_hierarchy = hierarchy;
 
         // Set introducer_name if not already set
-        if (!memberData.introducer_name && introducer.name) {
-            memberData.introducer_name = introducer.name;
+        if (!memberData.introducer_name && (introducer.name || introducer.Name)) {
+            memberData.introducer_name = introducer.name || introducer.Name;
         }
 
         console.log(`Built member hierarchy: ${hierarchy.length} levels`);
@@ -63,11 +66,15 @@ const addAgentHierarchy = async (agentData) => {
 
         // For agents, the introducer is typically another agent
         let introducerType = "AGENT";
-        let introducer = await AgentModel.findOne({ agent_id: agentData.introducer });
+        let introducer = await AgentModel.findOne({ 
+            $or: [{ agent_id: agentData.introducer }, { Agent_id: agentData.introducer }]
+        }).lean();
 
         if (!introducer) {
             // Could also be a member in some cases
-            introducer = await MemberModel.findOne({ member_id: agentData.introducer });
+            introducer = await MemberModel.findOne({ 
+                $or: [{ member_id: agentData.introducer }, { Member_id: agentData.introducer }]
+            }).lean();
             introducerType = "MEMBER";
         }
 
@@ -82,8 +89,8 @@ const addAgentHierarchy = async (agentData) => {
         agentData.introducer_hierarchy = hierarchy;
 
         // Set introducer_name if not already set
-        if (!agentData.introducer_name && introducer.name) {
-            agentData.introducer_name = introducer.name;
+        if (!agentData.introducer_name && (introducer.name || introducer.Name)) {
+            agentData.introducer_name = introducer.name || introducer.Name;
         }
 
         console.log(`Built agent hierarchy: ${hierarchy.length} levels`);

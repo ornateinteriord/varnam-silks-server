@@ -47,16 +47,29 @@ const signup = async (req, res) => {
       });
     }
 
-    // Auto-increment member_id (same logic as admin createMember)
-    const lastMember = await MemberModel.findOne()
+    // Auto-increment member_id by checking both uppercase and lowercase fields
+    const lastMemberLower = await MemberModel.findOne({ member_id: /^VS/i })
       .sort({ member_id: -1 })
-      .limit(1);
+      .lean();
+      
+    const lastMemberUpper = await MemberModel.findOne({ Member_id: /^VS/i })
+      .sort({ Member_id: -1 })
+      .lean();
 
-    let newMemberId = "105160";
-    if (lastMember && lastMember.member_id) {
-      const lastId = parseInt(lastMember.member_id);
-      if (!isNaN(lastId)) {
-        newMemberId = (lastId + 1).toString();
+    let maxIdStr = null;
+    if (lastMemberLower && lastMemberLower.member_id) maxIdStr = lastMemberLower.member_id;
+    if (lastMemberUpper && lastMemberUpper.Member_id) {
+        if (!maxIdStr || lastMemberUpper.Member_id > maxIdStr) {
+            maxIdStr = lastMemberUpper.Member_id;
+        }
+    }
+
+    let newMemberId = "VS000001";
+    if (maxIdStr) {
+      const match = maxIdStr.match(/^VS(\d+)$/i);
+      if (match) {
+        const lastIdNum = parseInt(match[1], 10);
+        newMemberId = "VS" + (lastIdNum + 1).toString().padStart(6, "0");
       }
     }
 
@@ -67,9 +80,10 @@ const signup = async (req, res) => {
       emailid,
       contactno,
       gender,
+      password, // Added password to store in member_tbl
       address,
       father_name,
-      dob,
+      dob: dob || new Date("1970-01-01"),
       pan_no,
       aadharcard_no,
       pincode,
@@ -78,6 +92,7 @@ const signup = async (req, res) => {
       role: "USER",
       status: "active", // New registrations start as pending for admin approval
       commission_eligible: true,
+      Date_of_joining: new Date(),
     };
 
     // Build introducer hierarchy
@@ -89,15 +104,16 @@ const signup = async (req, res) => {
     // Create user entry (password = contact number for public signup)
     const userPassword = password || contactno;
     try {
-      const lastUser = await UserModel.findOne()
-        .sort({ user_id: -1 })
+      const lastUser = await UserModel.findOne({ id: /^VS/i })
+        .sort({ id: -1 })
         .limit(1);
 
-      let newUserId = "105160";
-      if (lastUser && lastUser.user_id) {
-        const lastId = parseInt(lastUser.user_id);
-        if (!isNaN(lastId)) {
-          newUserId = (lastId + 1).toString();
+      let newUserId = "VS000001";
+      if (lastUser && lastUser.id) {
+        const match = lastUser.id.match(/^VS(\d+)$/i);
+        if (match) {
+          const lastIdNum = parseInt(match[1], 10);
+          newUserId = "VS" + (lastIdNum + 1).toString().padStart(6, "0");
         }
       }
 

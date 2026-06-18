@@ -25,17 +25,20 @@ router.get("/get-sponsor/:ref", async (req, res) => {
         const member = await MemberModel.findOne({
             $or: [
                 { member_id: ref },
+                { Member_id: ref },
                 { member_id: String(ref) },
-                { member_id: parseInt(ref) || ref }
+                { Member_id: String(ref) },
+                { member_id: parseInt(ref) || ref },
+                { Member_id: parseInt(ref) || ref }
             ]
-        });
+        }).lean();
 
         if (member) {
             return res.json({
                 success: true,
                 data: {
-                    id: member.member_id,
-                    name: member.name,
+                    id: member.member_id || member.Member_id,
+                    name: member.name || member.Name,
                     type: "member"
                 }
             });
@@ -48,14 +51,14 @@ router.get("/get-sponsor/:ref", async (req, res) => {
                 { agent_id: String(ref) },
                 { agent_id: parseInt(ref) || ref }
             ]
-        });
+        }).lean();
 
         if (agent) {
             return res.json({
                 success: true,
                 data: {
-                    id: agent.agent_id,
-                    name: agent.name,
+                    id: agent.agent_id || agent.Agent_id,
+                    name: agent.name || agent.Name,
                     type: "agent"
                 }
             });
