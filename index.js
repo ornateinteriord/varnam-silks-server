@@ -21,32 +21,30 @@ const { startMaturityScheduler } = require("./utils/maturityScheduler");
 
 // ====================== Controllers ======================
 const {
-  handleCashfreeWebhook,
+  handleRazorpayWebhook,
 } = require("./controllers/Transaction/TransactionController");
 
 const app = express();
 
 /* =====================================================
-   🔔 CASHFREE WEBHOOK — MUST BE FIRST (NO JSON PARSER)
+   🔔 RAZORPAY WEBHOOK — MUST BE FIRST (NO JSON PARSER)
    ===================================================== */
 
 app.post(
   [
-    "/transaction/webhook/cashfree",
-    "/api/transaction/webhook/cashfree",
+    "/transaction/webhook/razorpay",
+    "/api/transaction/webhook/razorpay",
   ],
   (req, res, next) => {
-    // Capture raw body for signature verification (match BICCSL-Server: type "*/*")
+    // Capture raw body for signature verification
     express.raw({ type: "*/*" })(req, res, () => {
-      // express.raw stores the body as a Buffer in req.body
-      // Convert it to string and store in req.rawBody for webhook handler
       if (Buffer.isBuffer(req.body)) {
         req.rawBody = req.body.toString('utf8');
       }
       next();
     });
   },
-  handleCashfreeWebhook
+  handleRazorpayWebhook
 );
 
 /* =====================================================
@@ -141,11 +139,11 @@ app.get("/health", (_req, res) => {
   });
 });
 
-app.get("/transaction/webhook/cashfree/status", (_req, res) => {
+app.get("/transaction/webhook/razorpay/status", (_req, res) => {
   res.json({
     status: "ready",
     method: "POST",
-    webhookSecretConfigured: !!process.env.CASHFREE_WEBHOOK_SECRET,
+    webhookSecretConfigured: !!process.env.RAZORPAY_WEBHOOK_SECRET,
   });
 });
 
@@ -221,7 +219,7 @@ const startServer = async () => {
 
     app.listen(PORT, "0.0.0.0", () => {
       console.log(`🌍 Server running on port ${PORT}`);
-      console.log("🔔 Cashfree webhook ready");
+      console.log("🔔 Razorpay webhook ready");
     });
 
     // Start maturity scheduler cron job (runs daily at midnight)

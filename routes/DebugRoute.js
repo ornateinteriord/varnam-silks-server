@@ -214,20 +214,19 @@ router.post("/test-webhook", async (req, res) => {
 
 // Webhook status check endpoint
 router.get("/webhook-status", (req, res) => {
-    const cashfreeConfig = require("../utils/cashfree");
+    const razorpayConfig = require("../utils/razorpay");
 
     res.json({
         status: "operational",
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV || "development",
         webhook_routes: [
-            "/transaction/webhook/cashfree",
-            "/api/transaction/webhook/cashfree"
+            "/transaction/webhook/razorpay",
+            "/api/transaction/webhook/razorpay"
         ],
-        cashfree_config: {
-            base_url: cashfreeConfig.CASHFREE_BASE_URL,
-            is_production: cashfreeConfig.IS_PRODUCTION,
-            webhook_secret_configured: !!cashfreeConfig.WEBHOOK_SECRET
+        razorpay_config: {
+            is_production: razorpayConfig.IS_PRODUCTION,
+            webhook_secret_configured: !!razorpayConfig.RAZORPAY_WEBHOOK_SECRET
         }
     });
 });

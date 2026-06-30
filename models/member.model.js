@@ -144,11 +144,11 @@ const memberSchema = mongoose.Schema(
       type: String,
       default: "PENDING",
     },
-    beneficiaryStatus: {
+    razorpay_contact_id: {
       type: String,
-      default: "NOT_CREATED",
+      default: null,
     },
-    beneficiaryId: {
+    razorpay_fund_account_id: {
       type: String,
       default: null,
     },

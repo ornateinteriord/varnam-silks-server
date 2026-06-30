@@ -4,6 +4,7 @@ const MemberModel = require("../../../models/member.model");
 const TransactionModel = require("../../../models/transaction.model");
 const axios = require("axios");
 const generateTransactionId = require("../../../utils/generateTransactionId");
+const razorpayConfig = require("../../../utils/razorpay");
 
 /**
  * Get all cash transactions with balance calculations
@@ -273,121 +274,106 @@ const createMaturityPayment = async (req, res) => {
         let payoutReference = null;
 
         if (payment_method === 'online') {
-            // Process with Cashfree Payout
-            if (!process.env.CI_APP_ID || !process.env.CI_SECRET_KEY) {
+            // Process with RazorpayX Payout
+            if (!razorpayConfig.RAZORPAY_KEY_ID || !razorpayConfig.RAZORPAY_KEY_SECRET) {
                 return res.status(500).json({
                     success: false,
                     message: "Payout gateway not configured. Contact administrator."
                 });
             }
 
-            // // Check if member has KYC and beneficiary details
-            // if (member.kycStatus !== "APPROVED") {
-            //     return res.status(400).json({
-            //         success: false,
-            //         message: "Member KYC not approved. Cannot process online payout."
-            //     });
-            // }
-
-            // if (member.beneficiaryStatus !== "CREATED" || !member.beneficiaryId) {
-            //     return res.status(400).json({
-            //         success: false,
-            //         message: "Member beneficiary not created. Cannot process online payout."
-            //     });
-            // }
-
-            // Get Cashfree payout base URL
-            const CASHFREE_PAYOUT_BASE_URL = process.env.PAYMENT_MODE === 'PRODUCTION'
-                ? 'https://api.cashfree.com/payout'  // V2 Production
-                : 'https://sandbox.cashfree.com/payout';  // V2 Sandbox
-
-            // Step 1: Get Bearer token from Cashfree using V1 authorize endpoint
-            // NOTE: Requires IP whitelisting in Cashfree Dashboard
-            let bearerToken;
-            try {
-                // V1 authorize endpoint is used to get the bearer token
-                const CASHFREE_PAYOUT_V1_URL = process.env.PAYMENT_MODE === 'PRODUCTION'
-                    ? 'https://payout-api.cashfree.com'  // V1 Production
-                    : 'https://payout-gamma.cashfree.com';  // V1 Sandbox
-
-                console.log("🔄 Attempting Cashfree Payout authorization...");
-                console.log("   URL:", `${CASHFREE_PAYOUT_V1_URL}/payout/v1/authorize`);
-                console.log("   Client ID:", process.env.CI_APP_ID);
-
-                const authResponse = await axios.post(
-                    `${CASHFREE_PAYOUT_V1_URL}/payout/v1/authorize`,
-                    {},
-                    {
-                        headers: {
-                            "X-Client-Id": process.env.CI_APP_ID,
-                            "X-Client-Secret": process.env.CI_SECRET_KEY,
-                            "Content-Type": "application/json"
-                        }
-                    }
-                );
-
-                console.log("📦 Auth Response:", JSON.stringify(authResponse.data, null, 2));
-
-                // Handle different response structures
-                if (authResponse.data?.data?.token) {
-                    bearerToken = authResponse.data.data.token;
-                } else if (authResponse.data?.token) {
-                    bearerToken = authResponse.data.token;
-                } else if (authResponse.data?.subCode === "200" && authResponse.data?.data?.token) {
-                    bearerToken = authResponse.data.data.token;
-                }
-
-                if (bearerToken) {
-                    console.log("✅ Cashfree Payout authorization successful, token received");
-                } else {
-                    console.error("❌ Token not found in response structure:", authResponse.data);
-                    throw new Error("Failed to obtain authorization token from Cashfree - unexpected response structure");
-                }
-            } catch (authError) {
-                console.error("❌ Cashfree Payout authorization error:");
-                console.error("   Status:", authError.response?.status);
-                console.error("   Response:", JSON.stringify(authError.response?.data, null, 2));
-                console.error("   Message:", authError.message);
-                return res.status(500).json({
-                    success: false,
-                    message: "Failed to authorize with payout gateway",
-                    error: authError.response?.data?.message || authError.message
-                });
-            }
-
-            // Create transfer payload
-            const transferId = `MATURITY_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-            const transferPayload = {
-                transfer_id: transferId,
-                transfer_amount: amount,
-                transfer_mode: "banktransfer",
-                beneficiary_details: {
-                    beneficiary_name: member.name,
-                    beneficiary_instrument_details: {
-                        bank_account_number: member.account_number,
-                        bank_ifsc: member.ifsc_code
-                    },
-                    email: member.emailid || "noemail@example.com",
-                    phone: member.contactno
-                },
-                remarks: `Maturity payment for account ${account_no}`
+            const auth = {
+                username: razorpayConfig.RAZORPAY_KEY_ID,
+                password: razorpayConfig.RAZORPAY_KEY_SECRET,
             };
 
-            // Step 2: Make payout request with Bearer token
-            payoutResponse = await axios.post(
-                `${CASHFREE_PAYOUT_BASE_URL}/transfers`,
-                transferPayload,
-                {
-                    headers: {
-                        "Authorization": `Bearer ${bearerToken}`,
-                        "Content-Type": "application/json",
-                        "x-api-version": "2024-01-01"
+            // Step 1: Ensure Contact and Fund Account exist
+            let fundAccountId = member.razorpay_fund_account_id;
+            
+            if (!fundAccountId) {
+                console.log("⚠️ Razorpay Fund Account missing for maturity payment, creating inline...");
+                try {
+                    let contactId = member.razorpay_contact_id;
+                    if (!contactId) {
+                        const contactRes = await axios.post(
+                            "https://api.razorpay.com/v1/contacts",
+                            {
+                                name: member.name,
+                                email: member.emailid || "noemail@example.com",
+                                contact: member.contactno,
+                                type: "customer",
+                                reference_id: member.member_id,
+                            },
+                            { auth, headers: { "Content-Type": "application/json" } }
+                        );
+                        contactId = contactRes.data.id;
+                        member.razorpay_contact_id = contactId;
                     }
-                }
-            );
 
-            payoutReference = transferId;
-            payoutStatus = payoutResponse.data.status || "completed";
+                    const fundRes = await axios.post(
+                        "https://api.razorpay.com/v1/fund_accounts",
+                        {
+                            contact_id: contactId,
+                            account_type: "bank_account",
+                            bank_account: {
+                                name: member.name,
+                                ifsc: member.ifsc_code,
+                                account_number: member.account_number,
+                            },
+                        },
+                        { auth, headers: { "Content-Type": "application/json" } }
+                    );
+                    
+                    fundAccountId = fundRes.data.id;
+                    member.razorpay_fund_account_id = fundAccountId;
+                    await member.save();
+                    console.log(`✅ Created Fund Account: ${fundAccountId}`);
+                } catch (error) {
+                    console.error("❌ Failed to create Razorpay Fund Account:", error.response?.data || error.message);
+                    return res.status(400).json({
+                        success: false,
+                        message: "Failed to setup payout account details.",
+                        error: error.response?.data || error.message
+                    });
+                }
+            }
+
+            // Step 2: Create transfer payload
+            const transferId = `MATURITY_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+            const transferPayload = {
+                account_number: process.env.RAZORPAYX_ACCOUNT_NUMBER || "2323230000000000",
+                fund_account_id: fundAccountId,
+                amount: Math.round(amount * 100), // convert to paise
+                currency: "INR",
+                mode: "NEFT",
+                purpose: "payout",
+                queue_if_low_balance: true,
+                reference_id: transferId,
+                narration: `Maturity payment for account ${account_no}`
+            };
+
+            try {
+                console.log("💰 Initiating RazorpayX payout transfer...");
+                payoutResponse = await axios.post(
+                    `https://api.razorpay.com/v1/payouts`,
+                    transferPayload,
+                    { auth, headers: { "Content-Type": "application/json" } }
+                );
+
+                payoutReference = payoutResponse.data.id;
+                payoutStatus = payoutResponse.data.status || "processing";
+                
+                if (payoutStatus === "rejected" || payoutStatus === "failed") {
+                    throw new Error(`Payout failed: ${payoutResponse.data.status_details?.description}`);
+                }
+            } catch (error) {
+                console.error("❌ Razorpay payout failed:", error.response?.data || error.message);
+                return res.status(400).json({
+                    success: false,
+                    message: "Payout failed",
+                    error: error.response?.data || error.message
+                });
+            }
         }
 
         // Update account balance (reduce the amount)

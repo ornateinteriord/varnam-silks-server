@@ -5,7 +5,7 @@ console.log("TransactionRoute.js loaded"); // DEBUG LOG
 router.get('/test-route', (req, res) => {
     res.json({ message: "Transaction route is working" });
 });
-const { getTransactions, addTransaction, getAllTransactions, createPaymentOrder, handleCashfreeWebhook, checkPaymentStatus, transferMoney, requestWithdraw, triggerTestWebhook, testPaymentStatus } = require("../controllers/Transaction/TransactionController");
+const { getTransactions, addTransaction, getAllTransactions, createPaymentOrder, handleRazorpayWebhook, checkPaymentStatus, transferMoney, requestWithdraw, triggerTestWebhook, testPaymentStatus } = require("../controllers/Transaction/TransactionController");
 const { withdrawCommission, getWithdrawalRequests, approveWithdrawal } = require("../controllers/Transaction/WithdrawalController");
 const { submitKYC, getKycSubmissions } = require("../controllers/KYC/KycController");
 const Authenticated = require("../middlewares/auth");
@@ -27,10 +27,10 @@ router.post('/withdraw-commission', Authenticated, authorizeRoles(["USER", "AGEN
 router.get('/withdrawal-requests', Authenticated, authorizeRoles(["ADMIN"]), getWithdrawalRequests);
 router.post('/approve-withdrawal', Authenticated, authorizeRoles(["ADMIN"]), approveWithdrawal);
 
-// Cashfree Routes
+// Razorpay Routes
 router.post('/create-order', createPaymentOrder);
 // ⚠️ WEBHOOK ROUTE REMOVED - Handled in index.js (BEFORE other middleware for raw body)
-// Webhook is at: POST /transaction/webhook/cashfree (defined in index.js line 29)
+// Webhook is at: POST /transaction/webhook/razorpay (defined in index.js line 29)
 router.get('/status/:orderId', Authenticated, checkPaymentStatus);
 
 // Test Webhook Routes
@@ -42,20 +42,18 @@ router.post('/kyc/submit', submitKYC); // /transaction/kyc/submit
 // router.post('/kyc/approve', Authenticated, authorizeRoles(["ADMIN"]), approveKYC); // /transaction/kyc/approve
 // router.get('/kyc/submissions', Authenticated, authorizeRoles(["ADMIN"]), getKycSubmissions); // /transaction/kyc/submissions
 
-// Diagnostic endpoint to check Cashfree configuration
-router.get('/cashfree-config', Authenticated, (req, res) => {
-    const cashfreeConfig = require("../utils/cashfree");
+// Diagnostic endpoint to check Razorpay configuration
+router.get('/razorpay-config', Authenticated, (req, res) => {
+    const razorpayConfig = require("../utils/razorpay");
     res.json({
-        environment: cashfreeConfig.NODE_ENV,
-        isProduction: cashfreeConfig.IS_PRODUCTION,
-        isSandbox: cashfreeConfig.IS_SANDBOX,
-        baseUrl: cashfreeConfig.CASHFREE_BASE_URL,
-        appIdConfigured: !!cashfreeConfig.CASHFREE_APP_ID,
-        appIdLength: cashfreeConfig.CASHFREE_APP_ID?.length || 0,
-        secretKeyConfigured: !!cashfreeConfig.CASHFREE_SECRET_KEY,
-        secretKeyLength: cashfreeConfig.CASHFREE_SECRET_KEY?.length || 0,
-        webhookSecretConfigured: !!cashfreeConfig.WEBHOOK_SECRET,
-        apiVersion: cashfreeConfig.X_API_VERSION
+        environment: razorpayConfig.NODE_ENV,
+        isProduction: razorpayConfig.IS_PRODUCTION,
+        isSandbox: razorpayConfig.IS_SANDBOX,
+        keyIdConfigured: !!razorpayConfig.RAZORPAY_KEY_ID,
+        keyIdLength: razorpayConfig.RAZORPAY_KEY_ID?.length || 0,
+        secretKeyConfigured: !!razorpayConfig.RAZORPAY_KEY_SECRET,
+        secretKeyLength: razorpayConfig.RAZORPAY_KEY_SECRET?.length || 0,
+        webhookSecretConfigured: !!razorpayConfig.RAZORPAY_WEBHOOK_SECRET
     });
 });
 
