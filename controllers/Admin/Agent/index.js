@@ -287,9 +287,60 @@ const getAgentById = async (req, res) => {
     }
 };
 
+// Delete agent account after deactivating
+const deleteAgent = async (req, res) => {
+    try {
+        const { agentId } = req.params;
+        const mongoose = require("mongoose");
+
+        const queryConditions = [
+            { agent_id: agentId }
+        ];
+
+        if (mongoose.Types.ObjectId.isValid(agentId)) {
+            queryConditions.push({ _id: new mongoose.Types.ObjectId(agentId) });
+        }
+
+        const agent = await AgentModel.findOne({ $or: queryConditions });
+
+        if (!agent) {
+            return res.status(404).json({
+                success: false,
+                message: `Agent not found with ID: ${agentId}`
+            });
+        }
+
+        // Delete from AgentModel
+        await AgentModel.findByIdAndDelete(agent._id);
+
+        // Delete from UserModel
+        await UserModel.deleteMany({
+            $or: [
+                { user_id: agent.agent_id },
+                { user_name: agent.agent_id },
+                { reference_id: agent.agent_id },
+                { password: agent.mobile }
+            ]
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Agent account and user login deleted successfully"
+        });
+    } catch (error) {
+        console.error('[ERROR] Failed to delete agent:', error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to delete agent",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     createAgent,
     getAgents,
     updateAgent,
-    getAgentById
+    getAgentById,
+    deleteAgent
 };

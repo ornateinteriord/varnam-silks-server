@@ -1,4 +1,5 @@
 const express = require("express");
+const { updatePassword } = require("../controllers/Auth/AuthController");
 const router = express.Router();
 const { getAgentById } = require("../controllers/Admin/Agent");
 const { createAccount } = require("../controllers/Admin/Account");
@@ -17,5 +18,7 @@ router.post('/make-payment/:agentId', Authenticated, authorizeRoles(["AGENT"]), 
 // Commission routes
 router.get('/get-commission-transactions/:agentId', Authenticated, authorizeRoles(["AGENT"]), getCommissionTransactions)
 router.post('/withdraw-commission/:agentId', Authenticated, authorizeRoles(["AGENT"]), withdrawCommission)
+
+router.put('/update-password', Authenticated, authorizeRoles(["AGENT"]), updatePassword);
 
 module.exports = router;

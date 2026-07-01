@@ -345,10 +345,184 @@ const login = async (req, res) => {
   }
 };
 
+const updatePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const userId = req.user.id; 
+    
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ success: false, message: "Old and new password are required" });
+    }
+
+    const mongoose = require("mongoose");
+    const db = mongoose.connection.db;
+    const objectId = new mongoose.Types.ObjectId(userId);
+
+    let userModel = await UserModel.findById(userId);
+    let memberTbl = await db.collection("member_tbl").findOne({ _id: objectId });
+    let adminTbl = await db.collection("admin_tbl").findOne({ _id: objectId });
+    let agentTbl = await db.collection("agent_tbl").findOne({ _id: objectId });
+
+    let foundUser = userModel || memberTbl || adminTbl || agentTbl;
+    
+    if (!foundUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Verify old password
+    const isOldPasswordValid = 
+      oldPassword === foundUser.password || 
+      oldPassword === foundUser.PASSWORD;
+
+    if (!isOldPasswordValid) {
+      return res.status(401).json({ success: false, message: "Incorrect old password" });
+    }
+
+    if (userModel) {
+      userModel.password = newPassword;
+      await userModel.save();
+    }
+    
+    if (memberTbl) {
+      await db.collection("member_tbl").updateOne(
+        { _id: objectId },
+        { $set: { password: newPassword } }
+      );
+    }
+
+    if (adminTbl) {
+      await db.collection("admin_tbl").updateOne(
+        { _id: objectId },
+        { $set: { password: newPassword, PASSWORD: newPassword } } 
+      );
+    }
+    
+    if (agentTbl) {
+      await db.collection("agent_tbl").updateOne(
+        { _id: objectId },
+        { $set: { password: newPassword } }
+      );
+    }
+
+    return res.json({ success: true, message: "Password updated successfully" });
+
+  } catch (error) {
+    console.error("Update Password Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const adminResetPassword = async (req, res) => {
+  try {
+    const { targetId, newPassword } = req.body;
+    
+    if (!targetId || !newPassword) {
+      return res.status(400).json({ success: false, message: "targetId and newPassword are required" });
+    }
+
+    const mongoose = require("mongoose");
+    const db = mongoose.connection.db;
+    const escapedTargetId = targetId.toString().trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(`^${escapedTargetId}$`, "i");
+    const numericId = !isNaN(parseInt(targetId)) ? parseInt(targetId) : -1;
+
+    let isObjectId = mongoose.Types.ObjectId.isValid(targetId.toString().trim());
+    let objectIdQuery = isObjectId ? { _id: new mongoose.Types.ObjectId(targetId.toString().trim()) } : null;
+
+    const userQuery = {
+      $or: [
+        ...(objectIdQuery ? [objectIdQuery] : []),
+        { id: searchRegex },
+        { user_id: searchRegex },
+        { user_name: searchRegex },
+        { reference_id: searchRegex }
+      ]
+    };
+
+    const memberQuery = {
+      $or: [
+        ...(objectIdQuery ? [objectIdQuery] : []),
+        { member_id: searchRegex },
+        { Member_id: searchRegex },
+        { contactno: searchRegex },
+        { emailid: searchRegex }
+      ]
+    };
+
+    const agentQuery = {
+      $or: [
+        ...(objectIdQuery ? [objectIdQuery] : []),
+        { agent_id: searchRegex },
+        { mobile: searchRegex },
+        { emailid: searchRegex }
+      ]
+    };
+
+    const adminQuery = {
+      $or: [
+        ...(objectIdQuery ? [objectIdQuery] : []),
+        { username: searchRegex },
+        { id: targetId },
+        { id: numericId }
+      ]
+    };
+
+    let foundUser = await UserModel.findOne(userQuery) || 
+                    await db.collection("member_tbl").findOne(memberQuery) || 
+                    await db.collection("agent_tbl").findOne(agentQuery) || 
+                    await db.collection("admin_tbl").findOne(adminQuery);
+
+    if (!foundUser) {
+      return res.status(404).json({ success: false, message: `Account not found for ID/Username: ${targetId}` });
+    }
+
+    let updatedCount = 0;
+
+    const userRes = await UserModel.updateMany(userQuery, { $set: { password: newPassword } });
+    if (userRes.modifiedCount > 0 || userRes.matchedCount > 0) updatedCount++;
+
+    const memberRes = await db.collection("member_tbl").updateMany(memberQuery, { $set: { password: newPassword } });
+    if (memberRes.modifiedCount > 0 || memberRes.matchedCount > 0) updatedCount++;
+
+    const agentRes = await db.collection("agent_tbl").updateMany(agentQuery, { $set: { password: newPassword } });
+    if (agentRes.modifiedCount > 0 || agentRes.matchedCount > 0) updatedCount++;
+
+    const adminRes = await db.collection("admin_tbl").updateMany(adminQuery, { $set: { password: newPassword, PASSWORD: newPassword } });
+    if (adminRes.modifiedCount > 0 || adminRes.matchedCount > 0) updatedCount++;
+
+    const email = foundUser.emailid || foundUser.email || foundUser.emailId;
+    const name = foundUser.name || foundUser.Name || foundUser.username || foundUser.user_name || targetId;
+    const accountId = foundUser.agent_id || foundUser.member_id || foundUser.Member_id || foundUser.user_id || foundUser.id || targetId;
+
+    if (email) {
+      try {
+        const { generatePasswordUpdatedEmail } = require("../../utils/emailTemplates");
+        const emailTemplate = generatePasswordUpdatedEmail(name, accountId);
+        await sendMail(email, emailTemplate.subject, emailTemplate.html, emailTemplate.text);
+        console.log(`✅ Admin reset password email sent to ${email}`);
+      } catch (emailError) {
+        console.error(`❌ Error sending password update email:`, emailError.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `Password reset successfully for ${name} (${accountId})`,
+      updatedCollections: updatedCount
+    });
+
+  } catch (error) {
+    console.error("Admin Reset Password Error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   signup,
   getSponsorDetails,
   recoverPassword,
   resetPassword,
   login,
+  updatePassword,
+  adminResetPassword,
 };

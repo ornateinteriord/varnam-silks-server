@@ -122,9 +122,9 @@ exports.submitKYC = async (req, res) => {
 
     // 🔍 Call RazorpayX (MANDATORY in production)
     try {
-      const razorpayResult = await createRazorpayFundAccount(member, bankAccount, ifsc, bankName);
-      
-      console.log("🏦 RazorpayX Result:", razorpayResult);
+      // COMMENTED OUT FOR NOW AS REQUESTED:
+      // const razorpayResult = await createRazorpayFundAccount(member, bankAccount, ifsc, bankName);
+      // console.log("🏦 RazorpayX Result:", razorpayResult);
 
       // We assume creation of contact & fund account = APPROVED for now, 
       // actual FAV (Fund Account Validation) via penny drop could be done via webhooks later if needed.
@@ -133,7 +133,7 @@ exports.submitKYC = async (req, res) => {
 
       return res.json({
         success: true,
-        message: "KYC approved successfully",
+        message: "KYC approved successfully (Razorpay bypassed)",
       });
     } catch (razorpayError) {
       console.error("Razorpay API error:", razorpayError.message);

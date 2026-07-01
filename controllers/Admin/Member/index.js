@@ -466,10 +466,71 @@ const setIntroducerHierarchy = async (req, res) => {
     }
 };
 
+// Delete member account after deactivating
+const deleteMember = async (req, res) => {
+    try {
+        const { memberId } = req.params;
+        const mongoose = require("mongoose");
+
+        const queryConditions = [
+            { member_id: memberId },
+            { Member_id: memberId }
+        ];
+
+        const memberIdAsNumber = parseInt(memberId, 10);
+        if (!isNaN(memberIdAsNumber) && memberIdAsNumber.toString() === memberId) {
+            queryConditions.push({ member_id: memberIdAsNumber });
+            queryConditions.push({ Member_id: memberIdAsNumber });
+        }
+
+        if (mongoose.Types.ObjectId.isValid(memberId)) {
+            queryConditions.push({ _id: new mongoose.Types.ObjectId(memberId) });
+        }
+
+        const member = await MemberModel.findOne({ $or: queryConditions });
+
+        if (!member) {
+            return res.status(404).json({
+                success: false,
+                message: `Member not found with ID: ${memberId}`
+            });
+        }
+
+        // Delete from MemberModel
+        await MemberModel.findByIdAndDelete(member._id);
+
+        // Delete from UserModel
+        await UserModel.deleteMany({
+            $or: [
+                { user_id: member.member_id },
+                { user_id: member.Member_id },
+                { user_name: member.member_id },
+                { user_name: member.Member_id },
+                { reference_id: member.member_id },
+                { reference_id: member.Member_id },
+                { password: member.contactno }
+            ]
+        });
+
+        res.status(200).json({
+            success: true,
+            message: "Member account and user login deleted successfully"
+        });
+    } catch (error) {
+        console.error('[ERROR] Failed to delete member:', error);
+        res.status(500).json({
+            success: false,
+            message: "Failed to delete member",
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     createMember,
     getMembers,
     updateMember,
     getMemberById,
     setIntroducerHierarchy,
+    deleteMember,
 };
