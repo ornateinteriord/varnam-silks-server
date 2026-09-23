@@ -220,8 +220,8 @@ const calculateCommissions = async (transaction) => {
         const processedBeneficiaries = new Set();
 
         const isAccountOpening = transaction.transaction_type === "Account Opening";
-        const accountOpeningRates = { 1: 30, 2: 20, 3: 5, 4: 5, 5: 5, 6: 5, 7: 5 };
-        const monthlyDepositRates = { 1: 5, 2: 1, 3: 1, 4: 1, 5: 0.5, 6: 0.5, 7: 0.5 };
+        const accountOpeningRates = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5 };
+        const monthlyDepositRates = { 1: 5, 2: 1, 3: 1, 4: 1, 5: 1, 6: 0.5, 7: 0.5 };
         const COMPANY_ID = "VS000001";
         
         // For both account opening and regular deposits, calculate up to 7 levels

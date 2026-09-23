@@ -61,6 +61,22 @@ const transactionSchema = new mongoose.Schema(
             type: String,
             default: "direct",
         },
+        payment_gateway: {
+            type: String,
+            default: null,
+        },
+        gateway_order_id: {
+            type: String,
+            default: null,
+        },
+        payment_session_id: {
+            type: String,
+            default: null,
+        },
+        payment_status: {
+            type: String,
+            default: "Pending",
+        },
         status: {
             type: String,
             default: "Pending", // Pending, Completed, Failed

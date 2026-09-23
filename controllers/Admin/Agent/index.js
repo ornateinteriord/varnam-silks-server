@@ -217,6 +217,14 @@ const updateAgent = async (req, res) => {
             { new: true, runValidators: true }
         );
 
+        // Update password in UserModel if provided
+        if (updateData.password) {
+            await UserModel.findOneAndUpdate(
+                { user_id: agentId },
+                { $set: { password: updateData.password } }
+            );
+        }
+
         res.status(200).json({
             success: true,
             message: "Agent updated successfully",
@@ -273,10 +281,21 @@ const getAgentById = async (req, res) => {
             });
         }
 
+        // Fetch password from UserModel
+        let password = "";
+        const agentIdForUser = agent.agent_id || agent.id;
+        const user = await UserModel.findOne({ user_id: agentIdForUser });
+        if (user && user.password) {
+            password = user.password;
+        }
+
+        const agentData = agent.toObject ? agent.toObject() : { ...agent };
+        agentData.password = password;
+
         res.status(200).json({
             success: true,
             message: "Agent fetched successfully",
-            data: agent
+            data: agentData
         });
     } catch (error) {
         res.status(500).json({
