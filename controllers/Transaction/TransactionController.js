@@ -114,7 +114,7 @@ exports.createPaymentOrder = async (req, res) => {
     const MemberModel = require("../../models/member.model");
 
     try {
-        const { member_id, amount, mobileno, Name, email, account_id, account_no, account_type, description } = req.body;
+        const { member_id, amount, mobileno, Name, email, account_id, account_no, account_type, description, payment_type } = req.body;
 
         if (!member_id || !amount || !mobileno || !Name) {
             return res.status(400).json({ success: false, message: "Missing required fields: member_id, amount, mobileno, Name" });
@@ -162,11 +162,11 @@ exports.createPaymentOrder = async (req, res) => {
             });
         }
 
-        // Check if account is active
-        if (account.status !== "active") {
+        // Check if account is active or pending
+        if (account.status !== "active" && account.status !== "pending") {
             return res.status(403).json({
                 success: false,
-                message: "Account is not active. Cannot add money to inactive account."
+                message: "Account is not active or pending. Cannot add money to this account."
             });
         }
 
@@ -190,7 +190,8 @@ exports.createPaymentOrder = async (req, res) => {
                 account_no: String(account_no),
                 account_type: account_type,
                 member_id: String(member_id),
-                description: description || "Add Money"
+                description: description || "Add Money",
+                payment_type: payment_type || "Money Added"
             }
         };
 
@@ -210,8 +211,8 @@ exports.createPaymentOrder = async (req, res) => {
             member_id,
             account_number: account_no,
             account_type: account_type,
-            transaction_type: "Money Added",
-            description: `Online Top-up to Account ${account_no} (Pending)`,
+            transaction_type: payment_type === 'ACCOUNT_OPENING' ? "Account Opening" : "Money Added",
+            description: description || `Online Top-up to Account ${account_no} (Pending)`,
             credit: Number(amount),
             debit: 0,
             balance: 0, // Will update on success
@@ -363,13 +364,15 @@ exports.handleRazorpayWebhook = async (req, res) => {
 
             // Update account balance
             const account = await AccountsModel.findOne({
-                member_id: transaction.member_id,
                 account_no: transaction.account_number,
-                account_type: transaction.account_type,
-                status: "active"
+                status: { $in: ["active", "pending", "Pending"] }
             });
 
             if (account) {
+                // If account was pending, activate it upon first successful payment
+                if (account.status && account.status.toLowerCase() === "pending") {
+                    account.status = "active";
+                }
                 account.account_amount += transaction.credit;
                 await account.save();
                 transaction.balance = account.account_amount;
@@ -380,7 +383,10 @@ exports.handleRazorpayWebhook = async (req, res) => {
             transaction.payment_status = "Success";
             transaction.payment_completed_at = new Date();
             transaction.payment_data = webhookData;
-            transaction.description = `Online Top-up to Account ${transaction.account_number} (Success)`;
+            
+            transaction.description = transaction.transaction_type === 'Account Opening' 
+                ? `Account Opening - ${transaction.account_number} (Success)` 
+                : `Online Top-up to Account ${transaction.account_number} (Success)`;
 
             await transaction.save();
 
@@ -448,7 +454,9 @@ exports.checkPaymentStatus = async (req, res) => {
             if (transaction.status !== "Completed") {
                 transaction.payment_status = "Success";
                 transaction.status = "Completed";
-                transaction.description = `Online Top-up to Account ${transaction.account_number} (Success)`;
+                transaction.description = transaction.transaction_type === 'Account Opening' 
+                    ? `Account Opening - ${transaction.account_number} (Success)` 
+                    : `Online Top-up to Account ${transaction.account_number} (Success)`;
 
                 if (transaction.account_number && transaction.account_type) {
                     const allAccounts = await AccountsModel.find({});
@@ -459,6 +467,9 @@ exports.checkPaymentStatus = async (req, res) => {
                     );
 
                     if (account) {
+                        if (account.status && account.status.toLowerCase() === "pending") {
+                            account.status = "active";
+                        }
                         const newAccountBalance = account.account_amount + transaction.credit;
                         account.account_amount = newAccountBalance;
                         await account.save();
@@ -471,6 +482,12 @@ exports.checkPaymentStatus = async (req, res) => {
                 }
 
                 await transaction.save();
+
+                try {
+                    await processTransactionCommission(transaction);
+                } catch (err) {
+                    console.error("Error processing commission in checkPaymentStatus:", err);
+                }
             }
             return res.status(200).json({ success: true, status: "PAID" });
         }

@@ -128,13 +128,12 @@
         "AGP001": "SB",
         "AGP003": "RD",
         "AGP004": "FD",
-        "AGP005": "Pigmy"
+        "AGP005": "Pigmy",
+        "AGP002": "RD"
     },
     "eligibleAccountTypes": [
-        "AGP001",
         "AGP003",
-        "AGP004",
-        "AGP005"
+        "AGP002"
     ],
     "notes": [
         "This config has TWO separate sections:",

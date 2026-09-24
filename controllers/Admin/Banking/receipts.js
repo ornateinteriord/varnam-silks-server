@@ -83,10 +83,13 @@ const createReceipt = async (req, res) => {
                     console.log(`🔧 Initialized null account_amount to 0`);
                 }
 
-                // Update account balance - ADD money for receipt
+                // Update account balance - ADD money for receipt, and activate if pending
                 const account = await AccountsModel.findOneAndUpdate(
                     { _id: existingAccount._id },
-                    { $inc: { account_amount: amount } },
+                    { 
+                        $inc: { account_amount: amount },
+                        $set: { status: "active" } // Activate account upon receipt
+                    },
                     { new: true }
                 );
 

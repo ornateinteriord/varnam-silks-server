@@ -1,3 +1,4 @@
+
 const AccountsModel = require("../../../models/accounts.model");
 const InterestModel = require("../../../models/interest.model");
 const AccountGroupModel = require("../../../models/accountGroup.model");
@@ -154,22 +155,22 @@ const createAccount = async (req, res) => {
         }).sort({ account_no: -1 }).limit(1);
 
         let newAccountNo;
-        if (lastAccountByType && lastAccountByType.account_no) {
-            // Increment the last account number
-            const lastAccountNo = parseInt(lastAccountByType.account_no);
-            if (!isNaN(lastAccountNo)) {
-                newAccountNo = lastAccountNo + 1;
+        if (lastAccountByType && lastAccountByType.account_no && lastAccountByType.account_no !== "NaN") {
+            const lastAccountNoStr = String(lastAccountByType.account_no);
+            const numMatch = lastAccountNoStr.match(/\d+$/);
+            if (numMatch) {
+                const num = parseInt(numMatch[0]) + 1;
+                const prefix = lastAccountNoStr.substring(0, lastAccountNoStr.length - numMatch[0].length);
+                newAccountNo = `${prefix}${String(num).padStart(numMatch[0].length, '0')}`;
             } else {
-                // If parsing fails, create new one based on member_id
-                const memberIdPrefix = member_id.toString().substring(0, 3);
-                const groupSuffix = "60"; // This could be derived from account_group_id if needed
-                newAccountNo = parseInt(`${memberIdPrefix}${groupSuffix}0001`);
+                newAccountNo = `${lastAccountNoStr}1`;
             }
         } else {
             // First account for this type
-            const memberIdPrefix = member_id.toString().substring(0, 3);
-            const groupSuffix = "60"; // This could be customized based on account type
-            newAccountNo = parseInt(`${memberIdPrefix}${groupSuffix}0001`);
+            const memberIdDigits = member_id.toString().replace(/\D/g, '');
+            const memberIdPrefix = memberIdDigits ? memberIdDigits.slice(-3).padStart(3, '0') : "000";
+            const groupSuffix = account_type ? account_type.replace(/\D/g, '') || "60" : "60";
+            newAccountNo = `ACC${groupSuffix}${memberIdPrefix}0001`;
         }
 
         // Create new account
@@ -378,12 +379,39 @@ const updateAccount = async (req, res) => {
             });
         }
 
+        const isApproving = (account.status === 'pending' || account.status === 'Pending') && 
+                            (updateData.status === 'active' || updateData.status === 'Active');
+
         // Update the account
         const updatedAccount = await AccountsModel.findOneAndUpdate(
             { account_id: accountId },
             { $set: updateData },
             { new: true, runValidators: true }
         );
+
+        if (isApproving) {
+            try {
+                const TransactionModel = require("../../../models/transaction.model");
+                const { processTransactionCommission } = require("../../../utils/commissionUtils");
+                
+                const pendingTx = await TransactionModel.findOne({
+                    account_number: account.account_no,
+                    transaction_type: "Account Opening",
+                    $or: [{ status: "Pending" }, { status: "pending" }]
+                });
+
+                if (pendingTx) {
+                    pendingTx.status = "Completed";
+                    await pendingTx.save();
+                    
+                    console.log("💰 Processing commission for approved account deposit...");
+                    const commissionResult = await processTransactionCommission(pendingTx);
+                    console.log("💰 Commission processing result:", commissionResult);
+                }
+            } catch (err) {
+                console.error("❌ Error processing commission on approval:", err.message);
+            }
+        }
 
         res.status(200).json({
             success: true,

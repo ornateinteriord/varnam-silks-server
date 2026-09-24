@@ -398,7 +398,8 @@ const createMemberAccount = async (req, res) => {
             interest_rate,
             duration,
             date_of_maturity,
-            account_amount
+            account_amount,
+            payment_mode // "online" or "offline"
         } = req.body;
 
         // Get member_id from authenticated user
@@ -467,19 +468,21 @@ const createMemberAccount = async (req, res) => {
         }).sort({ account_no: -1 }).limit(1);
 
         let newAccountNo;
-        if (lastAccountByType && lastAccountByType.account_no) {
-            const lastAccountNo = parseInt(lastAccountByType.account_no);
-            if (!isNaN(lastAccountNo)) {
-                newAccountNo = lastAccountNo + 1;
+        if (lastAccountByType && lastAccountByType.account_no && lastAccountByType.account_no !== "NaN") {
+            const lastAccountNoStr = String(lastAccountByType.account_no);
+            const numMatch = lastAccountNoStr.match(/\d+$/);
+            if (numMatch) {
+                const num = parseInt(numMatch[0]) + 1;
+                const prefix = lastAccountNoStr.substring(0, lastAccountNoStr.length - numMatch[0].length);
+                newAccountNo = `${prefix}${String(num).padStart(numMatch[0].length, '0')}`;
             } else {
-                const memberIdPrefix = memberId.toString().substring(0, 3);
-                const groupSuffix = "60";
-                newAccountNo = parseInt(`${memberIdPrefix}${groupSuffix}0001`);
+                newAccountNo = `${lastAccountNoStr}1`;
             }
         } else {
-            const memberIdPrefix = memberId.toString().substring(0, 3);
-            const groupSuffix = "60";
-            newAccountNo = parseInt(`${memberIdPrefix}${groupSuffix}0001`);
+            const memberIdDigits = memberId.toString().replace(/\D/g, '');
+            const memberIdPrefix = memberIdDigits ? memberIdDigits.slice(-3).padStart(3, '0') : "000";
+            const groupSuffix = account_type ? account_type.replace(/\D/g, '') || "60" : "60";
+            newAccountNo = `ACC${groupSuffix}${memberIdPrefix}0001`;
         }
 
         // Create new account
@@ -498,7 +501,7 @@ const createMemberAccount = async (req, res) => {
             duration: duration || 0,
             date_of_maturity: date_of_maturity,
             date_of_close: null,
-            status: "active", // Or pending approval? user didn't specify, assuming active for now
+            status: payment_mode === "offline" ? "pending" : (payment_mode === "online" ? "pending" : "active"), // If online, pending until payment success. If offline, pending until admin approves.
             // assigned_to: null,
             account_amount: account_amount || 0,
             // joint_member: null
@@ -508,8 +511,8 @@ const createMemberAccount = async (req, res) => {
         const member = await MemberModel.findOne({ member_id: memberId });
         // Update account with member's introducer if needed, or leave it for commission calculation
 
-        // If account is created with initial amount > 0, create transaction and trigger commission
-        if (account_amount && account_amount > 0) {
+        // If account is created with initial amount > 0 and it's not online payment, create transaction and trigger commission
+        if (account_amount && account_amount > 0 && payment_mode !== "online") {
             try {
                 const TransactionModel = require("../../models/transaction.model");
                 const generateTransactionId = require("../../utils/generateTransactionId");
@@ -532,16 +535,14 @@ const createMemberAccount = async (req, res) => {
                     balance: account_amount,
                     Name: member ? member.name : null,
                     mobileno: member ? member.contactno : null,
-                    status: "Completed",
+                    status: "Pending",
                     collected_by: memberId // Self
                 });
 
                 console.log(`📝 Transaction created for self-service account opening: ${transId}`);
 
-                // Process commission for introducers
-                console.log("💰 Processing commission for account opening deposit...");
-                const commissionResult = await processTransactionCommission(transaction);
-                console.log("💰 Commission processing result:", commissionResult);
+                // Commission is not processed here because status is Pending.
+                // It will be processed when Admin approves the account.
             } catch (txError) {
                 console.error("❌ Error creating transaction/commission for account opening:", txError.message);
                 // Don't fail account creation if transaction/commission fails
@@ -551,7 +552,10 @@ const createMemberAccount = async (req, res) => {
         res.status(201).json({
             success: true,
             message: "Account created successfully",
-            data: newAccount
+            data: newAccount,
+            account_id: newAccount.account_id,
+            account_no: newAccount.account_no,
+            account_type: newAccount.account_type
         });
 
     } catch (error) {
