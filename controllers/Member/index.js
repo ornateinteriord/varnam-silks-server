@@ -50,8 +50,10 @@ const getMyAccounts = async (req, res) => {
                             account_no: "$account_no",
                             account_type: "$account_type",
                             account_amount: "$account_amount",
+                            plan_amount: "$plan_amount",
                             status: "$status",
-                            date_of_opening: "$date_of_opening"
+                            date_of_opening: "$date_of_opening",
+                            date_of_maturity: "$date_of_maturity"
                         }
                     }
                 }
@@ -399,6 +401,7 @@ const createMemberAccount = async (req, res) => {
             duration,
             date_of_maturity,
             account_amount,
+            plan_amount,
             payment_mode // "online" or "offline"
         } = req.body;
 
@@ -504,6 +507,7 @@ const createMemberAccount = async (req, res) => {
             status: payment_mode === "offline" ? "pending" : (payment_mode === "online" ? "pending" : "active"), // If online, pending until payment success. If offline, pending until admin approves.
             // assigned_to: null,
             account_amount: account_amount || 0,
+            plan_amount: plan_amount || account_amount || 0,
             // joint_member: null
         });
 

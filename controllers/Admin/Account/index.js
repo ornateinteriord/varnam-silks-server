@@ -90,6 +90,7 @@ const createAccount = async (req, res) => {
             date_of_maturity,
             assigned_to,
             account_amount,
+            plan_amount,
             joint_member
         } = req.body;
 
@@ -192,6 +193,7 @@ const createAccount = async (req, res) => {
             status: "active",
             assigned_to,
             account_amount: account_amount || 0,
+            plan_amount: plan_amount || account_amount || 0,
             joint_member
         });
 
