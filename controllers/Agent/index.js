@@ -194,10 +194,29 @@ const getAssignedAccounts = async (req, res) => {
             })
         );
 
+        // Find all members introduced by this agent
+        const introducedMembers = await MemberModel.find({ introducer: agentId }).sort({ date_of_joining: -1 });
+        
+        const memberProfiles = introducedMembers.map(member => ({
+            date_of_opening: member.date_of_joining || member.createdAt,
+            account_no: member.member_id,
+            account_holder: member.name,
+            date_of_maturity: null,
+            balance: 0,
+            status: member.status || "active",
+            account_id: member.member_id,
+            member_id: member.member_id,
+            account_type: "Member",
+            account_operation: "None"
+        }));
+
+        // Combine both accounts and member profiles
+        const combinedData = [...accountsWithMemberDetails, ...memberProfiles];
+
         res.status(200).json({
             success: true,
-            message: "Assigned accounts fetched successfully",
-            data: accountsWithMemberDetails
+            message: "Assigned accounts and members fetched successfully",
+            data: combinedData
         });
     } catch (error) {
         console.error("Error fetching assigned accounts:", error);

@@ -310,16 +310,25 @@ const getMemberById = async (req, res) => {
     try {
         const { memberId } = req.params;
 
-        const searchRegex = new RegExp(`^${memberId}$`, "i");
         const mongoose = require("mongoose");
         const db = mongoose.connection.db;
         
         let objectIdQuery;
+        let actualUserIdStr = memberId;
         try {
             if (mongoose.Types.ObjectId.isValid(memberId)) {
                 objectIdQuery = new mongoose.Types.ObjectId(memberId);
+                
+                // If it's a valid ObjectId, it might be the _id from user_tbl (when logged in)
+                // Let's resolve it to the actual user_id string (like 'A20002')
+                const userDoc = await db.collection("user_tbl").findOne({ _id: objectIdQuery });
+                if (userDoc && userDoc.user_id) {
+                    actualUserIdStr = userDoc.user_id;
+                }
             }
         } catch(e) {}
+
+        const searchRegex = new RegExp(`^${actualUserIdStr}$`, "i");
 
         const query = {
             $or: [
@@ -356,6 +365,26 @@ const getMemberById = async (req, res) => {
                     Member_id: admin.id,
                     role: admin.role || "ADMIN"
                 };
+            } else {
+                // Check if it's an agent
+                const agentQuery = {
+                    $or: [
+                        { agent_id: searchRegex }
+                    ]
+                };
+                if (objectIdQuery) {
+                    agentQuery.$or.push({ _id: objectIdQuery });
+                }
+                const agent = await db.collection("agent_tbl").findOne(agentQuery);
+                
+                if (agent) {
+                    member = {
+                        ...agent,
+                        Name: agent.name,
+                        Member_id: agent.agent_id,
+                        role: "AGENT"
+                    };
+                }
             }
         }
 

@@ -273,8 +273,17 @@ const login = async (req, res) => {
       username: searchRegex
     });
 
+    const agentDetails = await db.collection("agent_tbl").findOne({
+      $or: [
+        { agent_id: searchRegex },
+        { mobile: searchRegex },
+        { emailid: searchRegex }
+      ]
+    });
+
     console.log(`[DEBUG QUERY] Searching for admin with regex:`, searchRegex);
     console.log(`[DEBUG QUERY] adminDetails found:`, !!adminDetails);
+    console.log(`[DEBUG QUERY] agentDetails found:`, !!agentDetails);
 
     if (!user && memberDetails) {
       // Fallback: If not in UserModel but exists in member_tbl
@@ -282,6 +291,11 @@ const login = async (req, res) => {
     } else if (!user && adminDetails) {
       // Fallback: If not in UserModel but exists in admin_tbl
       user = adminDetails;
+    } else if (!user && agentDetails) {
+      // Fallback: If not in UserModel but exists in agent_tbl
+      user = agentDetails;
+      user.role = "AGENT";
+      user.password = agentDetails.password || agentDetails.mobile;
     }
 
     if (!user) {
@@ -295,6 +309,7 @@ const login = async (req, res) => {
     const isPasswordValid = 
       password === user.password || 
       (memberDetails && password === memberDetails.password) ||
+      (agentDetails && (password === agentDetails.password || password === agentDetails.mobile)) ||
       (adminDetails && (password === adminDetails.password || password === adminDetails.PASSWORD));
 
     if (!isPasswordValid) {
@@ -304,7 +319,7 @@ const login = async (req, res) => {
     }
 
     // Combine user auth data with member/admin details for the frontend
-    const finalUserData = { ...user, ...memberDetails, ...adminDetails };
+    const finalUserData = { ...user, ...memberDetails, ...adminDetails, ...agentDetails };
 
     const role = finalUserData.user_role || finalUserData.role || "USER";
     const userId = finalUserData.user_id || finalUserData.Member_id || finalUserData.member_id || finalUserData.id;
