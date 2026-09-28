@@ -91,11 +91,13 @@ const createAccount = async (req, res) => {
             assigned_to,
             account_amount,
             plan_amount,
-            joint_member
+            joint_member,
+            payment_mode
         } = req.body;
 
         // Validate required fields
         if (!member_id || !account_type) {
+            console.error("❌ createAccount failed: Missing member_id or account_type");
             return res.status(400).json({
                 success: false,
                 message: "Member ID and Account Type are required"
@@ -103,15 +105,16 @@ const createAccount = async (req, res) => {
         }
 
         // Get the account group to determine the prefix for account_no
-        const accountGroup = await AccountGroupModel.findOne({
+        let accountGroup = await AccountGroupModel.findOne({
             account_group_id: account_type
         });
 
         if (!accountGroup) {
-            return res.status(404).json({
-                success: false,
-                message: "Account type not found"
-            });
+            console.warn(`⚠️ createAccount warning: Account type ${account_type} not found in DB. Bypassing strict validation.`);
+            accountGroup = {
+                account_group_name: account_type,
+                account_group_id: account_type
+            };
         }
 
         // Check if member already has an account of this type
@@ -122,6 +125,7 @@ const createAccount = async (req, res) => {
         });
 
         if (existingAccount) {
+            console.error(`❌ createAccount failed: Member ${member_id} already has active ${account_type} account`);
             return res.status(409).json({
                 success: false,
                 message: `Member already has an active ${accountGroup.account_group_name} account (${existingAccount.account_no || existingAccount.account_id}). Cannot create duplicate account type.`
@@ -190,7 +194,7 @@ const createAccount = async (req, res) => {
             duration: duration || 0,
             date_of_maturity,
             date_of_close: null,
-            status: "active",
+            status: payment_mode === 'offline' ? 'pending' : (payment_mode === 'online' ? 'pending' : 'active'),
             assigned_to,
             account_amount: account_amount || 0,
             plan_amount: plan_amount || account_amount || 0,
@@ -224,7 +228,7 @@ const createAccount = async (req, res) => {
                     balance: account_amount,
                     Name: member ? member.name : null,
                     mobileno: member ? member.contactno : null,
-                    status: "Completed",
+                    status: (payment_mode === 'offline' || payment_mode === 'online') ? "Pending" : "Completed",
                     collected_by: entered_by
                 });
 

@@ -90,7 +90,7 @@ const signup = async (req, res) => {
       introducer,
       introducer_name,
       role: "USER",
-      status: "active", // New registrations start as pending for admin approval
+      status: req.body.status || "active", // Use status from frontend or default to active
       commission_eligible: true,
       Date_of_joining: new Date(),
     };

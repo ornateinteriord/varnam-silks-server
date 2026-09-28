@@ -572,6 +572,42 @@ const createMemberAccount = async (req, res) => {
     }
 };
 
+// Update a pending member account
+const updateMemberAccount = async (req, res) => {
+    try {
+        const { accountId } = req.params;
+        const { plan_amount, duration, date_of_maturity } = req.body;
+        const memberId = req.user.memberId || req.user.userId;
+
+        const AccountsModel = require("../../models/accounts.model");
+
+        const account = await AccountsModel.findOne({ account_id: accountId, member_id: memberId });
+
+        if (!account) {
+            return res.status(404).json({ success: false, message: "Account not found" });
+        }
+
+        if (account.status?.toLowerCase() !== "pending") {
+            return res.status(400).json({ success: false, message: "Only pending accounts can be updated" });
+        }
+
+        account.plan_amount = plan_amount;
+        if (duration) account.duration = duration;
+        if (date_of_maturity) account.date_of_maturity = date_of_maturity;
+
+        await account.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Account updated successfully",
+            data: account
+        });
+    } catch (error) {
+        console.error("Error updating account:", error);
+        res.status(500).json({ success: false, message: "Failed to update account", error: error.message });
+    }
+};
+
 module.exports = {
     getMyAccounts,
     updateMyProfile,
@@ -580,5 +616,6 @@ module.exports = {
     getMemberTransactions,
     getMemberAccountGroups,
     getMemberInterestsByAccountGroup,
-    createMemberAccount
+    createMemberAccount,
+    updateMemberAccount
 };

@@ -3,7 +3,7 @@ const router = express.Router();
 const Authenticated = require("../middlewares/auth");
 const authorizeRoles = require("../middlewares/authorizeRole");
 const { getMemberById } = require("../controllers/Admin/Member");
-const { getMyAccounts, updateMyProfile, getMemberBasicInfo, getMemberAccountsPublic, getMemberTransactions, createMemberAccount, getMemberAccountGroups, getMemberInterestsByAccountGroup } = require("../controllers/Member");
+const { getMyAccounts, updateMyProfile, getMemberBasicInfo, getMemberAccountsPublic, getMemberTransactions, createMemberAccount, getMemberAccountGroups, getMemberInterestsByAccountGroup, updateMemberAccount } = require("../controllers/Member");
 
 router.get('/get-member/:memberId', Authenticated, authorizeRoles(["USER", "ADMIN", "AGENT", "ADMIN_01"]), getMemberById)
 
@@ -12,6 +12,9 @@ router.get('/get-my-accounts', Authenticated, authorizeRoles(["USER"]), getMyAcc
 router.post('/create-account', Authenticated, authorizeRoles(["USER"]), createMemberAccount);
 router.get('/get-account-groups', Authenticated, authorizeRoles(["USER"]), getMemberAccountGroups);
 router.get('/get-interests-by-account-group/:account_group_id', Authenticated, authorizeRoles(["USER"]), getMemberInterestsByAccountGroup);
+
+// Update pending account
+router.put('/update-account/:accountId', Authenticated, authorizeRoles(["USER"]), updateMemberAccount);
 
 // Update member profile
 router.put('/update-profile/:memberId', Authenticated, authorizeRoles(["USER"]), updateMyProfile);

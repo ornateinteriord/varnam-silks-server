@@ -211,9 +211,38 @@ const getMembers = async (req, res) => {
         const members = await MemberModel.find(filter)
             .sort({ createdAt: -1 })
             .skip(skip)
-            .limit(parseInt(limit));
+            .limit(parseInt(limit))
+            .lean();
 
         const totalMembers = await MemberModel.countDocuments(filter);
+
+        // For pending members, enrich with account data (plan_amount, duration)
+        if (status === 'Pending' || status === 'pending') {
+            const AccountsModel = require("../../../models/accounts.model");
+            const memberIds = members.map(m => m.member_id).filter(Boolean);
+            const accounts = await AccountsModel.find({
+                member_id: { $in: memberIds },
+                status: 'pending'
+            }).lean();
+
+            // Build a lookup map: member_id -> account
+            const accountMap = {};
+            for (const acc of accounts) {
+                if (!accountMap[acc.member_id]) {
+                    accountMap[acc.member_id] = acc;
+                }
+            }
+
+            // Attach plan_amount and duration to each member
+            for (const member of members) {
+                const acc = accountMap[member.member_id];
+                if (acc) {
+                    member.plan_amount = acc.plan_amount;
+                    member.duration = acc.duration;
+                    member.account_id = acc.account_id;
+                }
+            }
+        }
 
         res.status(200).json({
             success: true,

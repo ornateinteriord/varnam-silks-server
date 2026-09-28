@@ -120,12 +120,14 @@ exports.createPaymentOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: "Missing required fields: member_id, amount, mobileno, Name" });
         }
 
-        // Validate account details are provided
-        if (!account_id || !account_no || !account_type) {
-            return res.status(400).json({
-                success: false,
-                message: "Missing required account details: account_id, account_no, account_type"
-            });
+        if (payment_type !== 'MEMBER_REGISTRATION') {
+            // Validate account details are provided
+            if (!account_id || !account_no || !account_type) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Missing required account details: account_id, account_no, account_type"
+                });
+            }
         }
 
         // Validate member exists and is active
@@ -139,35 +141,37 @@ exports.createPaymentOrder = async (req, res) => {
             });
         }
 
-        if (member.status !== "active") {
+        if (member.status !== "active" && member.status !== "pending" && member.status !== "Pending") {
             return res.status(403).json({
                 success: false,
-                message: "Member account is not active"
+                message: "Member account is not active or pending"
             });
         }
 
-        // Validate account exists and belongs to member
-        const allAccounts = await AccountsModel.find({});
-        const account = allAccounts.find(acc =>
-            (acc.account_id === account_id || acc.account_id === parseInt(account_id)) &&
-            (acc.member_id === member_id || acc.member_id === parseInt(member_id)) &&
-            (acc.account_no == account_no) &&
-            (acc.account_type === account_type)
-        );
+        if (payment_type !== 'MEMBER_REGISTRATION') {
+            // Validate account exists and belongs to member
+            const allAccounts = await AccountsModel.find({});
+            const account = allAccounts.find(acc =>
+                (acc.account_id === account_id || acc.account_id === parseInt(account_id) || acc._id.toString() === account_id) &&
+                (acc.member_id === member_id || acc.member_id === parseInt(member_id)) &&
+                (acc.account_no == account_no) &&
+                (acc.account_type === account_type)
+            );
 
-        if (!account) {
-            return res.status(404).json({
-                success: false,
-                message: "Account not found or does not belong to this member"
-            });
-        }
+            if (!account) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Account not found or does not belong to this member"
+                });
+            }
 
-        // Check if account is active or pending
-        if (account.status !== "active" && account.status !== "pending") {
-            return res.status(403).json({
-                success: false,
-                message: "Account is not active or pending. Cannot add money to this account."
-            });
+            // Check if account is active or pending
+            if (account.status !== "active" && account.status !== "pending" && account.status !== "Pending") {
+                return res.status(403).json({
+                    success: false,
+                    message: "Account is not active or pending. Cannot add money to this account."
+                });
+            }
         }
 
         const orderId = `ORDER_${Date.now()}`; // Generate unique Order ID
@@ -187,8 +191,8 @@ exports.createPaymentOrder = async (req, res) => {
             currency: "INR",
             receipt: orderId,
             notes: {
-                account_no: String(account_no),
-                account_type: account_type,
+                account_no: account_no ? String(account_no) : "N/A",
+                account_type: account_type || "N/A",
                 member_id: String(member_id),
                 description: description || "Add Money",
                 payment_type: payment_type || "Money Added"
@@ -209,10 +213,10 @@ exports.createPaymentOrder = async (req, res) => {
             transaction_id: orderId, // Use our generated receipt Order ID as Transaction ID
             transaction_date: new Date(),
             member_id,
-            account_number: account_no,
-            account_type: account_type,
-            transaction_type: payment_type === 'ACCOUNT_OPENING' ? "Account Opening" : "Money Added",
-            description: description || `Online Top-up to Account ${account_no} (Pending)`,
+            account_number: account_no || "N/A",
+            account_type: account_type || "N/A",
+            transaction_type: payment_type === 'ACCOUNT_OPENING' ? "Account Opening" : payment_type === 'MEMBER_REGISTRATION' ? "Member Registration" : "Money Added",
+            description: description || (payment_type === 'MEMBER_REGISTRATION' ? `Member Registration - ${member_id}` : `Online Top-up to Account ${account_no} (Pending)`),
             credit: Number(amount),
             debit: 0,
             balance: 0, // Will update on success
@@ -362,21 +366,33 @@ exports.handleRazorpayWebhook = async (req, res) => {
                 return res.status(200).json({ received: true });
             }
 
-            // Update account balance
-            const account = await AccountsModel.findOne({
-                account_no: transaction.account_number,
-                status: { $in: ["active", "pending", "Pending"] }
-            });
-
-            if (account) {
-                // If account was pending, activate it upon first successful payment
-                if (account.status && account.status.toLowerCase() === "pending") {
-                    account.status = "active";
+            if (transaction.transaction_type === "Member Registration") {
+                const MemberModel = require("../../models/member.model");
+                const member = await MemberModel.findOne({ member_id: transaction.member_id });
+                if (member) {
+                    if (member.status && member.status.toLowerCase() === "pending") {
+                        member.status = "active";
+                        await member.save();
+                        console.log("✅ Member status updated to active:", member.member_id);
+                    }
                 }
-                account.account_amount += transaction.credit;
-                await account.save();
-                transaction.balance = account.account_amount;
-                console.log("✅ Account balance updated:", account.account_amount);
+            } else {
+                // Update account balance
+                const account = await AccountsModel.findOne({
+                    account_no: transaction.account_number,
+                    status: { $in: ["active", "pending", "Pending"] }
+                });
+
+                if (account) {
+                    // If account was pending, activate it upon first successful payment
+                    if (account.status && account.status.toLowerCase() === "pending") {
+                        account.status = "active";
+                    }
+                    account.account_amount += transaction.credit;
+                    await account.save();
+                    transaction.balance = account.account_amount;
+                    console.log("✅ Account balance updated:", account.account_amount);
+                }
             }
 
             transaction.status = "Completed";
@@ -386,6 +402,8 @@ exports.handleRazorpayWebhook = async (req, res) => {
             
             transaction.description = transaction.transaction_type === 'Account Opening' 
                 ? `Account Opening - ${transaction.account_number} (Success)` 
+                : transaction.transaction_type === 'Member Registration'
+                ? `Member Registration - ${transaction.member_id} (Success)`
                 : `Online Top-up to Account ${transaction.account_number} (Success)`;
 
             await transaction.save();
