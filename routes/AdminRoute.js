@@ -60,6 +60,35 @@ router.get('/get-agents', Authenticated, authorizeRoles(["ADMIN", "ADMIN_01"]), 
 router.put('/update-agent/:agentId', Authenticated, authorizeRoles(["ADMIN", "ADMIN_01"]), updateAgent)
 router.get('/get-agent/:agentId', Authenticated, authorizeRoles(["ADMIN", "ADMIN_01"]), getAgentById)
 router.delete('/delete-agent/:agentId', Authenticated, authorizeRoles(["ADMIN", "ADMIN_01"]), deleteAgent)
+router.put('/promote-agent/:agentId', Authenticated, authorizeRoles(["ADMIN", "ADMIN_01"]), async (req, res) => {
+    try {
+        const { agentId } = req.params;
+        const { level } = req.body;
+
+        if (level === undefined || level === null || level < 0 || level > 7) {
+            return res.status(400).json({ success: false, message: "Level must be between 0 and 7" });
+        }
+
+        const AgentModel = require("../models/agent.model");
+        const updatedAgent = await AgentModel.findOneAndUpdate(
+            { agent_id: agentId },
+            { $set: { level: parseInt(level), promoted_at: new Date() } },
+            { new: true, runValidators: true }
+        );
+
+        if (!updatedAgent) {
+            return res.status(404).json({ success: false, message: "Agent not found" });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: `Agent promoted to Level ${level} successfully`,
+            data: updatedAgent
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Failed to promote agent", error: error.message });
+    }
+})
 
 // Interest routes
 router.post('/create-interest', Authenticated, authorizeRoles(["ADMIN", "ADMIN_01"]), createInterest)

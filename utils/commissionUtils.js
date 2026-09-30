@@ -167,15 +167,13 @@ const calculateCommissions = async (transaction) => {
             return [];
         }
 
-        // Get member/agent details
+        // Get member/agent details (the new user who triggered the transaction)
         const memberId = transaction.member_id;
         let sourceUser;
         let sourceType = "MEMBER";
 
-        // Try to find as member first
         sourceUser = await MemberModel.findOne({ member_id: memberId });
         if (!sourceUser) {
-            // Try as agent
             sourceUser = await AgentModel.findOne({ agent_id: memberId });
             sourceType = "AGENT";
         }
@@ -185,38 +183,49 @@ const calculateCommissions = async (transaction) => {
             return [];
         }
 
-        // Check if source is commission eligible
         if (!sourceUser.commission_eligible) {
             console.log(`Source user ${memberId} not eligible for commission`);
             return [];
         }
 
-        // Check if source member is a senior citizen
         const ageThreshold = config.seniorCitizenAgeThreshold || 60;
-        // Try both field names - dob is used in member model, date_of_birth is used in agent model
         const dobField = sourceUser.dob || sourceUser.date_of_birth;
         const isSenior = isSeniorCitizen(dobField, ageThreshold);
         const citizenType = isSenior ? "seniorCitizen" : "general";
 
-        console.log(`\n👤 Source Member Info:`);
+        console.log(`\n👤 Source User Info:`);
         console.log(`   Name: ${sourceUser.name}`);
-        console.log(`   DOB: ${dobField}`);
-        console.log(`   Age Threshold: ${ageThreshold}`);
         console.log(`   Status: ${isSenior ? '🧓 Senior Citizen' : '👥 General'}`);
 
-        // Get introducer hierarchy
+        // The new user's introducer hierarchy (levels 1–6 = their upline chain)
         const hierarchy = sourceUser.introducer_hierarchy || [];
         if (hierarchy.length === 0) {
             console.log(`No introducer hierarchy for ${memberId}`);
             return [];
         }
 
+        // ─── Determine the DIRECT REFERRER (Level 1 agent) and their promote level ───
+        const directReferrerId = hierarchy[0]; // Level 1 is always the direct referrer
+        let directReferrerLevel = 7; // default: full 7 levels if not found or not an agent
+
+        if (directReferrerId) {
+            const directReferrer = await AgentModel.findOne({ agent_id: directReferrerId });
+            if (directReferrer && typeof directReferrer.level === 'number') {
+                directReferrerLevel = directReferrer.level;
+                console.log(`\n🏅 Direct Referrer: ${directReferrerId} | Promote Level: ${directReferrerLevel}`);
+            } else {
+                console.log(`\n🏅 Direct Referrer: ${directReferrerId} | Level: not an agent or not set, defaulting to 7`);
+            }
+        }
+
+        // If directReferrerLevel is 0, no levels go to the normal chain — all to sponsor
+        // Levels 1..agentLevel  → normal upline chain (hierarchy[0..agentLevel-1])
+        // Levels agentLevel+1..6 → direct referrer's OWN sponsor chain
+        // Level 7 → company always
+
         const accountTypeName = getAccountTypeName(transaction.account_type, config);
         const transactionAmount = transaction.credit || 0;
         const commissions = [];
-
-        // Calculate commission for each level
-        // Track which beneficiaries have already received commission to avoid duplicates
         const processedBeneficiaries = new Set();
 
         const isAccountOpening = transaction.transaction_type === "Account Opening";
@@ -224,28 +233,52 @@ const calculateCommissions = async (transaction) => {
         const monthlyDepositRates = { 1: 5, 2: 1, 3: 1, 4: 1, 5: 1, 6: 0.5, 7: 0.5 };
         const COMPANY_ID = "VS000001";
 
-        // For both account opening and regular deposits, calculate up to 7 levels
-        let numLevels = 7;
+        const sourceName = sourceUser.name?.trim() || `Member-${memberId}`;
 
-        for (let i = 0; i < numLevels; i++) {
-            const level = i + 1;
-            let beneficiaryId = hierarchy[i];
+        // ─── Fetch direct referrer's own sponsor chain (for overflow levels) ───
+        let referrerSponsorChain = [];
+        if (directReferrerId) {
+            const directReferrerDoc = await AgentModel.findOne({ agent_id: directReferrerId });
+            if (directReferrerDoc && directReferrerDoc.introducer_hierarchy) {
+                referrerSponsorChain = directReferrerDoc.introducer_hierarchy;
+            }
+        }
+
+        console.log(`\n📊 Commission Distribution Plan (Agent Level: ${directReferrerLevel}):`);
+        console.log(`   Levels 1–${directReferrerLevel}: → ALL credited to ${directReferrerId} (their earned levels)`);
+        console.log(`   Levels ${directReferrerLevel + 1}–6: → A20016's own sponsor chain (overflow)`);
+        console.log(`   Level 7: → Company (${COMPANY_ID})`);
+
+        for (let level = 1; level <= 7; level++) {
+            let beneficiaryId;
 
             if (level === 7) {
+                // Level 7 always goes to company
                 beneficiaryId = COMPANY_ID;
-            } else if (!beneficiaryId) {
-                continue; // Skip if no introducer for levels 1-6
+
+            } else if (level <= directReferrerLevel) {
+                // Levels 1..agentLevel → all go to the direct referrer (A20016) themselves
+                // They "own" these levels — commission credited to their own wallet
+                beneficiaryId = directReferrerId;
+                if (!beneficiaryId) {
+                    console.log(`   Level ${level}: No direct referrer, skipping`);
+                    continue;
+                }
+
+            } else {
+                // Levels beyond the agent's level (agentLevel+1 to 6)
+                // → go up A20016's OWN sponsor chain
+                // sponsorIndex: level (agentLevel+1) → chain[0], level (agentLevel+2) → chain[1], etc.
+                const sponsorIndex = level - directReferrerLevel - 1;
+                beneficiaryId = referrerSponsorChain[sponsorIndex];
+                if (!beneficiaryId) {
+                    console.log(`   Level ${level}: No sponsor at position ${sponsorIndex} in referrer's chain, skipping`);
+                    continue;
+                }
+                console.log(`   Level ${level} (overflow → referrer's sponsor[${sponsorIndex + 1}]): ${beneficiaryId}`);
             }
 
-            // Skip if this beneficiary has already received commission at a higher level
-            // Exceptions: Company ID at level 7 always gets it
-            const skipDuplicateCheck = level === 7;
-            if (processedBeneficiaries.has(beneficiaryId) && !skipDuplicateCheck) {
-                console.log(`Skipping duplicate beneficiary at level ${level}: ${beneficiaryId} (already processed at higher level)`);
-                continue;
-            }
-
-            // Find the beneficiary
+            // Find beneficiary (allow A20016 to appear multiple times — one record per level)
             let beneficiary = await MemberModel.findOne({ member_id: beneficiaryId });
             let beneficiaryType = "MEMBER";
 
@@ -255,39 +288,29 @@ const calculateCommissions = async (transaction) => {
             }
 
             if (!beneficiary) {
-                console.log(`Beneficiary not found at level ${level}: ${beneficiaryId}`);
+                console.log(`   Level ${level}: Beneficiary not found: ${beneficiaryId}`);
                 continue;
             }
 
-            // Check if beneficiary is commission eligible
             if (!beneficiary.commission_eligible) {
-                console.log(`Beneficiary ${beneficiaryId} not eligible for commission`);
+                console.log(`   Level ${level}: Beneficiary ${beneficiaryId} not commission eligible`);
                 continue;
             }
 
-            // Get commission rate for this level and account type
-            let commissionRate;
-
-            if (isAccountOpening) {
-                commissionRate = accountOpeningRates[level];
-            } else {
-                commissionRate = monthlyDepositRates[level];
-            }
+            const commissionRate = isAccountOpening
+                ? accountOpeningRates[level]
+                : monthlyDepositRates[level];
 
             if (commissionRate === undefined || commissionRate === null) {
-                console.log(`No rate found for ${accountTypeName} at level ${level}`);
+                console.log(`   Level ${level}: No rate defined`);
                 continue;
             }
 
-            // Calculate commission amount
             const commissionAmount = (transactionAmount * commissionRate) / 100;
 
-            // Mark this beneficiary as processed
-            processedBeneficiaries.add(beneficiaryId);
-
-            // Get beneficiary name with fallback for empty/null names
             const beneficiaryName = beneficiary.name?.trim() || `Member-${beneficiaryId}`;
-            const sourceName = sourceUser.name?.trim() || `Member-${memberId}`;
+            const label = level <= directReferrerLevel ? '(own earned level)' : '(sponsor overflow)';
+            console.log(`   Level ${level}: ${beneficiaryId} ${label} → ₹${commissionAmount.toFixed(2)} (${commissionRate}%)`);
 
             commissions.push({
                 level,
@@ -315,6 +338,7 @@ const calculateCommissions = async (transaction) => {
         return [];
     }
 };
+
 
 // Generate unique commission ID
 const generateCommissionId = async () => {

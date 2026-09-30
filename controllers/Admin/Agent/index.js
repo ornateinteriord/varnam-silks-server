@@ -40,16 +40,6 @@ const createAgent = async (req, res) => {
             }
         }
 
-        // Check if mobile already exists
-        if (mobile) {
-            const existingMobile = await AgentModel.findOne({ mobile });
-            if (existingMobile) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Mobile number already exists"
-                });
-            }
-        }
 
         // Create new agent with auto-generated agent_id
         const newAgent = await AgentModel.create({
@@ -196,19 +186,6 @@ const updateAgent = async (req, res) => {
             });
         }
 
-        // If updating mobile, check if it already exists for another agent
-        if (updateData.mobile && updateData.mobile !== agent.mobile) {
-            const existingMobile = await AgentModel.findOne({
-                mobile: updateData.mobile,
-                agent_id: { $ne: agentId }
-            });
-            if (existingMobile) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Mobile number already exists for another agent"
-                });
-            }
-        }
 
         // Update the agent
         const updatedAgent = await AgentModel.findOneAndUpdate(

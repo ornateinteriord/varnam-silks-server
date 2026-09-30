@@ -50,7 +50,6 @@ const memberSchema = mongoose.Schema(
     contactno: {
       type: String,
       default: null,
-      unique: true
     },
     pan_no: {
       type: String,
@@ -150,6 +149,14 @@ const memberSchema = mongoose.Schema(
     },
     razorpay_fund_account_id: {
       type: String,
+      default: null,
+    },
+    amount: {
+      type: Number,
+      default: null,
+    },
+    duration: {
+      type: Number,
       default: null,
     },
     bank_details: {

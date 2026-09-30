@@ -37,7 +37,6 @@ const agentSchema = mongoose.Schema(
     mobile: {
       type: String,
       default: null,
-      unique: true
     },
     pan_no: {
       type: String,
@@ -84,6 +83,16 @@ const agentSchema = mongoose.Schema(
     },
     designation: {
       type: String,
+      default: null,
+    },
+    level: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 7,
+    },
+    promoted_at: {
+      type: Date,
       default: null,
     },
   },

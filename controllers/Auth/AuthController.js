@@ -28,6 +28,8 @@ const signup = async (req, res) => {
       dob,
       pan_no,
       aadharcard_no,
+      amount,
+      duration,
     } = req.body;
 
     // Validate required fields
@@ -38,14 +40,7 @@ const signup = async (req, res) => {
       });
     }
 
-    // Check if contactno already exists
-    const existingContact = await MemberModel.findOne({ contactno });
-    if (existingContact) {
-      return res.status(400).json({
-        success: false,
-        message: "Contact number already registered. Please login instead."
-      });
-    }
+
 
     // Auto-increment member_id by checking both uppercase and lowercase fields
     const lastMemberLower = await MemberModel.findOne({ member_id: /^VS/i })
@@ -93,6 +88,8 @@ const signup = async (req, res) => {
       status: req.body.status || "active", // Use status from frontend or default to active
       commission_eligible: true,
       Date_of_joining: new Date(),
+      amount: amount || null,
+      duration: duration || null,
     };
 
     // Build introducer hierarchy

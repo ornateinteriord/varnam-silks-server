@@ -77,16 +77,6 @@ const createMember = async (req, res) => {
             });
         }
 
-        // Check if contactno already exists
-        if (contactno) {
-            const existingContact = await MemberModel.findOne({ contactno });
-            if (existingContact) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Contact number already exists"
-                });
-            }
-        }
 
         // Prepare member data
         const memberData = {
@@ -296,19 +286,6 @@ const updateMember = async (req, res) => {
             });
         }
 
-        // If updating contactno, check if it already exists for another member
-        if (updateData.contactno && updateData.contactno !== member.contactno) {
-            const existingContact = await MemberModel.findOne({
-                contactno: updateData.contactno,
-                _id: { $ne: member._id }  // Use _id instead of member_id for uniqueness
-            });
-            if (existingContact) {
-                return res.status(400).json({
-                    success: false,
-                    message: "Contact number already exists for another member"
-                });
-            }
-        }
 
         // Update using _id to avoid type issues
         const updatedMember = await MemberModel.findByIdAndUpdate(
