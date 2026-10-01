@@ -71,19 +71,19 @@ const buildIntroducerHierarchy = async (introducerId, introducerType) => {
         // Start with the direct introducer
         const hierarchy = [introducerId];
 
-        // Add the introducer's hierarchy (up to 6 more levels for total of 7)
+        // Add the introducer's hierarchy (up to 9 more levels for total of 10)
         if (introducer.introducer_hierarchy && introducer.introducer_hierarchy.length > 0) {
             // Filter out any duplicates - don't include introducerId again if it's already in their hierarchy
             const existingHierarchy = introducer.introducer_hierarchy
                 .filter(id => id !== introducerId && id !== String(introducerId)) // Remove duplicates
-                .slice(0, 6);
+                .slice(0, 9);
             hierarchy.push(...existingHierarchy);
         }
 
         // Ensure no duplicates in final hierarchy (just in case)
         const uniqueHierarchy = [...new Set(hierarchy.map(String))];
 
-        return uniqueHierarchy.slice(0, 7); // Max 7 levels
+        return uniqueHierarchy.slice(0, 10); // Max 10 levels
     } catch (error) {
         console.error("Error building introducer hierarchy:", error);
         return introducerId ? [introducerId] : [];
@@ -197,7 +197,7 @@ const calculateCommissions = async (transaction) => {
         console.log(`   Name: ${sourceUser.name}`);
         console.log(`   Status: ${isSenior ? '🧓 Senior Citizen' : '👥 General'}`);
 
-        // The new user's introducer hierarchy (levels 1–6 = their upline chain)
+        // The new user's introducer hierarchy (levels 1–9 = their upline chain)
         const hierarchy = sourceUser.introducer_hierarchy || [];
         if (hierarchy.length === 0) {
             console.log(`No introducer hierarchy for ${memberId}`);
@@ -206,7 +206,7 @@ const calculateCommissions = async (transaction) => {
 
         // ─── Determine the DIRECT REFERRER (Level 1 agent) and their promote level ───
         const directReferrerId = hierarchy[0]; // Level 1 is always the direct referrer
-        let directReferrerLevel = 7; // default: full 7 levels if not found or not an agent
+        let directReferrerLevel = 10; // default: full 10 levels if not found or not an agent
 
         if (directReferrerId) {
             const directReferrer = await AgentModel.findOne({ agent_id: directReferrerId });
@@ -220,8 +220,8 @@ const calculateCommissions = async (transaction) => {
 
         // If directReferrerLevel is 0, no levels go to the normal chain — all to sponsor
         // Levels 1..agentLevel  → normal upline chain (hierarchy[0..agentLevel-1])
-        // Levels agentLevel+1..6 → direct referrer's OWN sponsor chain
-        // Level 7 → company always
+        // Levels agentLevel+1..9 → direct referrer's OWN sponsor chain
+        // Level 10 → company always
 
         const accountTypeName = getAccountTypeName(transaction.account_type, config);
         const transactionAmount = transaction.credit || 0;
@@ -229,8 +229,8 @@ const calculateCommissions = async (transaction) => {
         const processedBeneficiaries = new Set();
 
         const isAccountOpening = transaction.transaction_type === "Account Opening";
-        const accountOpeningRates = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5 };
-        const monthlyDepositRates = { 1: 5, 2: 1, 3: 1, 4: 1, 5: 1, 6: 0.5, 7: 0.5 };
+        const accountOpeningRates = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5, 8: 5, 9: 5, 10: 5 };
+        const monthlyDepositRates = { 1: 5, 2: 1, 3: 1, 4: 0.75, 5: 0.75, 6: 0.5, 7: 0.25, 8: 0.25, 9: 0.25, 10: 0.25 };
         const COMPANY_ID = "VS000001";
 
         const sourceName = sourceUser.name?.trim() || `Member-${memberId}`;
@@ -244,20 +244,21 @@ const calculateCommissions = async (transaction) => {
             }
         }
 
-        console.log(`\n📊 Commission Distribution Plan (Agent Level: ${directReferrerLevel}):`);
-        console.log(`   Levels 1–${directReferrerLevel}: → ALL credited to ${directReferrerId} (their earned levels)`);
-        console.log(`   Levels ${directReferrerLevel + 1}–6: → A20016's own sponsor chain (overflow)`);
-        console.log(`   Level 7: → Company (${COMPANY_ID})`);
+        const earnedLevels = directReferrerLevel + 1;
+        console.log(`\n📊 Commission Distribution Plan (Agent Level: ${directReferrerLevel}, Earned Levels: ${earnedLevels}):`);
+        console.log(`   Levels 1–${Math.min(earnedLevels, 9)}: → ALL credited to ${directReferrerId} (their earned levels)`);
+        console.log(`   Levels ${earnedLevels + 1}–9: → ${directReferrerId}'s own sponsor chain (overflow)`);
+        console.log(`   Level 10: → Company (${COMPANY_ID}) (Director Level)`);
 
-        for (let level = 1; level <= 7; level++) {
+        for (let level = 1; level <= 10; level++) {
             let beneficiaryId;
 
-            if (level === 7) {
-                // Level 7 always goes to company
+            if (level === 10) {
+                // Level 10 always goes to company
                 beneficiaryId = COMPANY_ID;
 
-            } else if (level <= directReferrerLevel) {
-                // Levels 1..agentLevel → all go to the direct referrer (A20016) themselves
+            } else if (level <= earnedLevels) {
+                // Levels 1..earnedLevels → all go to the direct referrer themselves
                 // They "own" these levels — commission credited to their own wallet
                 beneficiaryId = directReferrerId;
                 if (!beneficiaryId) {
@@ -266,10 +267,10 @@ const calculateCommissions = async (transaction) => {
                 }
 
             } else {
-                // Levels beyond the agent's level (agentLevel+1 to 6)
-                // → go up A20016's OWN sponsor chain
-                // sponsorIndex: level (agentLevel+1) → chain[0], level (agentLevel+2) → chain[1], etc.
-                const sponsorIndex = level - directReferrerLevel - 1;
+                // Levels beyond the agent's earned levels
+                // → go up the direct referrer's OWN sponsor chain
+                // sponsorIndex: level (earnedLevels+1) → chain[0], level (earnedLevels+2) → chain[1], etc.
+                const sponsorIndex = level - earnedLevels - 1;
                 beneficiaryId = referrerSponsorChain[sponsorIndex];
                 if (!beneficiaryId) {
                     console.log(`   Level ${level}: No sponsor at position ${sponsorIndex} in referrer's chain, skipping`);
@@ -309,7 +310,7 @@ const calculateCommissions = async (transaction) => {
             const commissionAmount = (transactionAmount * commissionRate) / 100;
 
             const beneficiaryName = beneficiary.name?.trim() || `Member-${beneficiaryId}`;
-            const label = level <= directReferrerLevel ? '(own earned level)' : '(sponsor overflow)';
+            const label = level <= earnedLevels ? '(own earned level)' : '(sponsor overflow)';
             console.log(`   Level ${level}: ${beneficiaryId} ${label} → ₹${commissionAmount.toFixed(2)} (${commissionRate}%)`);
 
             commissions.push({
