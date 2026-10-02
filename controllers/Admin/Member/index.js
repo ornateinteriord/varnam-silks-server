@@ -287,12 +287,114 @@ const updateMember = async (req, res) => {
         }
 
 
+        // Check if member is being activated
+        const wasPending = !member.status || member.status.toLowerCase() === 'pending';
+        const isBecomingActive = updateData.status && updateData.status.toLowerCase() === 'active';
+
         // Update using _id to avoid type issues
         const updatedMember = await MemberModel.findByIdAndUpdate(
             member._id,
             { $set: updateData },
             { new: true, runValidators: true }
         );
+
+        if (wasPending && isBecomingActive) {
+            console.log(`🚀 Member ${member.member_id} activated! Activating accounts and transactions...`);
+            try {
+                const AccountsModel = require("../../../models/accounts.model");
+                const TransactionModel = require("../../../models/transaction.model");
+                const { processTransactionCommission } = require("../../../utils/commissionUtils");
+
+                // 1. Find and activate all pending accounts for this member
+                const pendingAccounts = await AccountsModel.find({
+                    member_id: member.member_id,
+                    status: { $regex: /^pending$/i }
+                });
+
+                for (const account of pendingAccounts) {
+                    // Update plan_amount if provided in the activation request
+                    const accountUpdate = { status: "active" };
+                    if (updateData.plan_amount) {
+                        accountUpdate.plan_amount = updateData.plan_amount;
+                    }
+                    if (updateData.account_amount) {
+                        accountUpdate.account_amount = updateData.account_amount;
+                    }
+                    await AccountsModel.findOneAndUpdate(
+                        { _id: account._id },
+                        { $set: accountUpdate },
+                        { new: true }
+                    );
+                    console.log(`✅ Activated account ${account.account_no} with plan_amount: ${accountUpdate.plan_amount || account.plan_amount}`);
+
+                    // 2. Find and complete all pending transactions for this account
+                    const pendingTxs = await TransactionModel.find({
+                        account_number: account.account_no,
+                        status: { $regex: /^pending$/i }
+                    });
+
+                    for (const tx of pendingTxs) {
+                        // Mark as Completed
+                        tx.status = "Completed";
+                        await tx.save();
+                        console.log(`✅ Completed transaction ${tx.transaction_id}`);
+
+                        // Re-fetch fresh from DB to get a clean plain object
+                        // (avoids undefined fields from Mongoose mutated doc)
+                        const freshTx = await TransactionModel.findOne({ _id: tx._id }).lean();
+
+                        // If account_type is missing on this tx, fill it from the account
+                        if (!freshTx.account_type || freshTx.account_type === 'Other') {
+                            freshTx.account_type = account.account_type;
+                        }
+                        // If credit is 0 or missing, fill from account plan_amount
+                        if (!freshTx.credit || freshTx.credit === 0) {
+                            freshTx.credit = account.plan_amount || account.account_amount || 0;
+                        }
+                        // Ensure member_id is set
+                        if (!freshTx.member_id) {
+                            freshTx.member_id = member.member_id;
+                        }
+
+                        // 3. Process commission
+                        try {
+                            const commissionResult = await processTransactionCommission(freshTx);
+                            console.log(`✅ Processed commission for ${freshTx.transaction_id}:`, commissionResult);
+                        } catch (commError) {
+                            console.error(`❌ Error processing commission for ${tx.transaction_id}:`, commError.message);
+                        }
+                    }
+
+                    // If no existing pending transaction found, create one now
+                    if (pendingTxs.length === 0 && account.plan_amount > 0) {
+                        const generateTransactionId = require("../../../utils/generateTransactionId");
+                        const transId = await generateTransactionId();
+                        const newTx = await TransactionModel.create({
+                            transaction_id: transId,
+                            transaction_date: new Date(),
+                            member_id: member.member_id,
+                            account_number: account.account_no,
+                            account_type: account.account_type,
+                            transaction_type: "Account Opening",
+                            description: `Account Opening - ${account.account_no} (activated by admin)`,
+                            credit: account.plan_amount || account.account_amount || 0,
+                            debit: 0,
+                            balance: account.plan_amount || account.account_amount || 0,
+                            status: "Completed"
+                        });
+                        console.log(`📝 Created missing Account Opening transaction: ${transId}`);
+                        try {
+                            const commissionResult = await processTransactionCommission(newTx);
+                            console.log(`✅ Commission processed for new tx ${transId}:`, commissionResult);
+                        } catch (commError) {
+                            console.error(`❌ Commission error for ${transId}:`, commError.message);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("❌ Error during member activation hooks:", err);
+            }
+        }
 
 
 

@@ -102,18 +102,20 @@ const validateCommissionEligibility = (transaction, config) => {
 
     console.log(`   Transaction Amount: ₹${transaction.credit}`);
 
-    // Check if account type is commission-eligible (FD, RD, Pigmy)
+    // Currently ONLY AGP003 (RD) is eligible for commission.
+    // To enable FD (AGP004), Pigmy (AGP005), SB (AGP001) in future:
+    //   → Add them to eligibleAccountTypes in commission.config.json
     const accountTypeId = transaction.account_type?.toString();
-    const eligibleTypes = config.eligibleAccountTypes || ["1", "2", "3"]; // Fallback to old format
+    const eligibleTypes = config.eligibleAccountTypes || ["AGP003"]; // Default: AGP003 (RD) only
 
     console.log(`   Account Type ID: ${accountTypeId}`);
     console.log(`   Eligible Types: ${eligibleTypes.join(', ')}`);
 
     if (!eligibleTypes.includes(accountTypeId)) {
-        console.log("   Result: ❌ Not Eligible - Account type not eligible");
+        console.log("   Result: ❌ Not Eligible - Account type not eligible (only AGP003/RD is active)");
         return {
             eligible: false,
-            reason: "Account type not eligible for commission",
+            reason: "Account type not eligible for commission (only RD/AGP003 is active)",
         };
     }
 
@@ -122,11 +124,15 @@ const validateCommissionEligibility = (transaction, config) => {
 };
 
 // Map account type ID to name
+// Currently only AGP003 → RD is active.
+// Inactive mappings are kept in commission.config.json notes for future use.
 const getAccountTypeName = (accountTypeId, config) => {
     const mapping = config.accountTypeMapping || {
-        "1": "FD",
-        "2": "RD",
-        "3": "Pigmy",
+        "AGP003": "RD" // Only active account type
+        // "AGP001": "SB",   // Inactive
+        // "AGP002": "RD",   // Inactive (alternate RD group)
+        // "AGP004": "FD",   // Inactive
+        // "AGP005": "Pigmy" // Inactive
     };
     return mapping[accountTypeId?.toString()] || "Other";
 };
@@ -229,8 +235,22 @@ const calculateCommissions = async (transaction) => {
         const processedBeneficiaries = new Set();
 
         const isAccountOpening = transaction.transaction_type === "Account Opening";
+
+        // ── Commission Rate Tables (10 levels) ──────────────────────────────────
+        // Currently ONLY AGP003 (RD) is active. Other account types are commented out.
+        //
+        // Account Opening rates — applied once when account is first activated:
         const accountOpeningRates = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5, 8: 5, 9: 5, 10: 5 };
-        const monthlyDepositRates = { 1: 5, 2: 1, 3: 1, 4: 0.75, 5: 0.75, 6: 0.5, 7: 0.25, 8: 0.25, 9: 0.25, 10: 0.25 };
+        //
+        // Monthly deposit rates — applied on each monthly installment payment:
+        const monthlyDepositRates  = { 1: 5, 2: 1, 3: 1, 4: 0.75, 5: 0.75, 6: 0.5, 7: 0.25, 8: 0.25, 9: 0.25, 10: 0.25 };
+        //
+        // Inactive rate tables (enable if account types are activated in future):
+        // const fdOpeningRates    = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5, 8: 5, 9: 5, 10: 5 };
+        // const pigmyOpeningRates = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5, 8: 5, 9: 5, 10: 5 };
+        // const sbOpeningRates    = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5, 8: 5, 9: 5, 10: 5 };
+        // ────────────────────────────────────────────────────────────────────────
+
         const COMPANY_ID = "VS000001";
 
         const sourceName = sourceUser.name?.trim() || `Member-${memberId}`;
@@ -470,7 +490,31 @@ const distributeCommissions = async (commissions) => {
 // Process commission for a completed transaction
 const processTransactionCommission = async (transaction) => {
     try {
-        console.log("\n" + "=".repeat(60));
+        // ── Normalize transaction object ─────────────────────────────
+        // Convert Mongoose document to plain JS object if needed
+        if (transaction && typeof transaction.toObject === 'function') {
+            transaction = transaction.toObject();
+        }
+
+        // Handle field name differences — ORDER/payment gateway transactions
+        // may use 'ew_credit' instead of 'credit', or store amount differently
+        if (!transaction.credit && transaction.ew_credit) {
+            transaction.credit = parseFloat(transaction.ew_credit) || 0;
+        }
+        if (!transaction.credit && transaction.amount) {
+            transaction.credit = parseFloat(transaction.amount) || 0;
+        }
+
+        // If account_type is missing, try to get it from account_number
+        if (!transaction.account_type || transaction.account_type === 'Other') {
+            // Try to infer from description or default to AGP003 (RD — only active type)
+            if (transaction.description && transaction.description.includes('RD')) {
+                transaction.account_type = 'AGP003';
+            }
+        }
+
+        // ── Log ─────────────────────────────────────────────────────
+
         console.log("🎯 COMMISSION PROCESSING STARTED");
         console.log("=".repeat(60));
         console.log(`📄 Transaction ID: ${transaction.transaction_id}`);

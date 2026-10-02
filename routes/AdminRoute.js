@@ -65,8 +65,9 @@ router.put('/promote-agent/:agentId', Authenticated, authorizeRoles(["ADMIN", "A
         const { agentId } = req.params;
         const { level } = req.body;
 
-        if (level === undefined || level === null || level < 0 || level > 7) {
-            return res.status(400).json({ success: false, message: "Level must be between 0 and 7" });
+        // Levels 0–9 (Level 0 = base agent, Level 9 = top agent, Level 10 is reserved for Company)
+        if (level === undefined || level === null || level < 0 || level > 9) {
+            return res.status(400).json({ success: false, message: "Level must be between 0 and 9" });
         }
 
         const AgentModel = require("../models/agent.model");

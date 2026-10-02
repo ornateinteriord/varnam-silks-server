@@ -1,157 +1,61 @@
 {
     "enabled": true,
     "minimumTransactionAmount": 0,
-    "description": "Configuration for both Interest Rates (for account maturity) and 7-Level Commission (for referral)",
+    "description": "Commission config — currently ONLY AGP003 (RD) is active for account opening and commission",
     "seniorCitizenAgeThreshold": 60,
+
     "depositInterestRates": {
-        "description": "Interest rates for deposit accounts - used for maturity calculation based on tenure",
-        "FD": {
-            "1_YEAR": {
-                "general": 9.00,
-                "seniorCitizen": 9.50
-            },
-            "2_YEAR": {
-                "general": 9.50,
-                "seniorCitizen": 10.00
-            },
-            "3_YEAR": {
-                "general": 10.00,
-                "seniorCitizen": 10.50
-            },
-            "4_YEAR": {
-                "general": 11.00,
-                "seniorCitizen": 11.50
-            },
-            "5_YEAR": {
-                "general": 13.00,
-                "seniorCitizen": 13.00
-            }
-        },
+        "description": "Interest rates for deposit accounts — only RD is active. To enable others, add them back to eligibleAccountTypes and accountTypeMapping.",
+
         "RD": {
-            "1_YEAR": {
-                "general": 6.00,
-                "seniorCitizen": 6.50
-            },
-            "2_YEAR": {
-                "general": 7.00,
-                "seniorCitizen": 7.50
-            },
-            "3_YEAR": {
-                "general": 9.00,
-                "seniorCitizen": 9.50
-            },
-            "4_YEAR": {
-                "general": 10.00,
-                "seniorCitizen": 10.50
-            },
-            "5_YEAR": {
-                "general": 12.00,
-                "seniorCitizen": 12.50
-            }
-        },
-        "Pigmy": {
-            "1_YEAR": {
-                "general": 5.00,
-                "seniorCitizen": 5.50
-            },
-            "2_YEAR": {
-                "general": 6.00,
-                "seniorCitizen": 6.50
-            },
-            "3_YEAR": {
-                "general": 10.00,
-                "seniorCitizen": 10.50
-            }
-        },
-        "SB": {
-            "ON_DEMAND": {
-                "general": 4.00,
-                "seniorCitizen": 4.50
-            }
+            "1_YEAR": { "general": 6.00, "seniorCitizen": 6.50 },
+            "2_YEAR": { "general": 7.00, "seniorCitizen": 7.50 },
+            "3_YEAR": { "general": 9.00, "seniorCitizen": 9.50 },
+            "4_YEAR": { "general": 10.00, "seniorCitizen": 10.50 },
+            "5_YEAR": { "general": 12.00, "seniorCitizen": 12.50 }
         }
     },
+
     "commissionLevels": {
-        "description": "7-Level referral commission - same rate for everyone (no senior citizen differentiation)",
+        "description": "10-Level referral commission — only RD (AGP003) is active currently",
         "levels": [
-            {
-                "level": 1,
-                "FD": 4.50,
-                "RD": 4.50,
-                "Pigmy": 4.50,
-                "SB": 4.50
-            },
-            {
-                "level": 2,
-                "FD": 1.00,
-                "RD": 1.00,
-                "Pigmy": 1.00,
-                "SB": 1.00
-            },
-            {
-                "level": 3,
-                "FD": 0.50,
-                "RD": 0.50,
-                "Pigmy": 0.50,
-                "SB": 0.50
-            },
-            {
-                "level": 4,
-                "FD": 0.25,
-                "RD": 0.25,
-                "Pigmy": 0.25,
-                "SB": 0.25
-            },
-            {
-                "level": 5,
-                "FD": 0.25,
-                "RD": 0.25,
-                "Pigmy": 0.25,
-                "SB": 0.25
-            },
-            {
-                "level": 6,
-                "FD": 0.25,
-                "RD": 0.25,
-                "Pigmy": 0.25,
-                "SB": 0.25
-            },
-            {
-                "level": 7,
-                "FD": 0.25,
-                "RD": 0.25,
-                "Pigmy": 0.25,
-                "SB": 0.25
-            }
+            { "level": 1,  "RD": 4.50 },
+            { "level": 2,  "RD": 1.00 },
+            { "level": 3,  "RD": 0.50 },
+            { "level": 4,  "RD": 0.25 },
+            { "level": 5,  "RD": 0.25 },
+            { "level": 6,  "RD": 0.25 },
+            { "level": 7,  "RD": 0.25 },
+            { "level": 8,  "RD": 0.25 },
+            { "level": 9,  "RD": 0.25 },
+            { "level": 10, "RD": 0.25 }
         ]
     },
+
     "accountTypeMapping": {
-        "AGP001": "SB",
-        "AGP003": "RD",
-        "AGP004": "FD",
-        "AGP005": "Pigmy",
-        "AGP002": "RD"
+        "AGP003": "RD"
     },
+
     "eligibleAccountTypes": [
-        "AGP003",
-        "AGP002"
+        "AGP003"
     ],
+
     "notes": [
-        "This config has TWO separate sections:",
-        "1. depositInterestRates - For calculating interest on maturity (based on tenure + senior citizen)",
-        "2. commissionLevels - For 7-level referral commission (same for everyone)",
+        "ACTIVE: AGP003 → RD only",
         "",
-        "Interest Rates (for account maturity):",
-        "- FD: 9-13% (general), 9.50-13% (senior citizen)",
-        "- RD: 6-12% (general), 6.50-12.50% (senior citizen)",
-        "- Pigmy: 5-10% (general), 5.50-10.50% (senior citizen)",
-        "- SB: 4% (general), 4.50% (senior citizen)",
+        "INACTIVE (to enable later, add back to eligibleAccountTypes and accountTypeMapping):",
+        "  AGP001 → SB (Savings Bank)",
+        "  AGP002 → RD (alternate RD group — not needed currently)",
+        "  AGP004 → FD (Fixed Deposit)",
+        "  AGP005 → Pigmy",
         "",
-        "Commission Levels (for referral):",
-        "- Level 1: 4.50%",
-        "- Level 2: 1.00%",
-        "- Level 3: 0.50%",
-        "- Levels 4-7: 0.25% each",
+        "Commission Levels (10-level, RD only):",
+        "  Level 1  : 4.50%",
+        "  Level 2  : 1.00%",
+        "  Level 3  : 0.50%",
+        "  Levels 4-10 : 0.25% each",
         "",
-        "Commission triggers on: User add money, Admin add receipt, Agent collect money"
+        "Level 10 always goes to Company (VS000001)",
+        "Commission triggers on: Account Opening approval, Admin add receipt, Agent collect money"
     ]
 }

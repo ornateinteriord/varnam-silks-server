@@ -71,7 +71,7 @@ const commissionSchema = new mongoose.Schema(
             type: Number,
             required: true,
             min: 1,
-            max: 7,
+            max: 10, // 10-level commission structure (Level 10 = Company)
         },
         // Status Tracking
         status: {
