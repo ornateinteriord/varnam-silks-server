@@ -102,20 +102,23 @@ const validateCommissionEligibility = (transaction, config) => {
 
     console.log(`   Transaction Amount: ₹${transaction.credit}`);
 
-    // Currently ONLY AGP003 (RD) is eligible for commission.
-    // To enable FD (AGP004), Pigmy (AGP005), SB (AGP001) in future:
-    //   → Add them to eligibleAccountTypes in commission.config.json
     const accountTypeId = transaction.account_type?.toString();
-    const eligibleTypes = config.eligibleAccountTypes || ["AGP003"]; // Default: AGP003 (RD) only
+    const eligibleTypes = config.eligibleAccountTypes || ["AGP003", "AGP001", "AGP002", "AGP004", "AGP005", "RD", "Member"];
 
     console.log(`   Account Type ID: ${accountTypeId}`);
     console.log(`   Eligible Types: ${eligibleTypes.join(', ')}`);
 
-    if (!eligibleTypes.includes(accountTypeId)) {
-        console.log("   Result: ❌ Not Eligible - Account type not eligible (only AGP003/RD is active)");
+    const isEligible = 
+        !accountTypeId ||
+        transaction.transaction_type === "Account Opening" ||
+        eligibleTypes.includes(accountTypeId) ||
+        ["AGP003", "AGP001", "AGP002", "AGP004", "AGP005", "RD", "Member"].includes(accountTypeId);
+
+    if (!isEligible) {
+        console.log("   Result: ❌ Not Eligible - Account type not eligible");
         return {
             eligible: false,
-            reason: "Account type not eligible for commission (only RD/AGP003 is active)",
+            reason: "Account type not eligible for commission",
         };
     }
 
@@ -124,17 +127,17 @@ const validateCommissionEligibility = (transaction, config) => {
 };
 
 // Map account type ID to name
-// Currently only AGP003 → RD is active.
-// Inactive mappings are kept in commission.config.json notes for future use.
 const getAccountTypeName = (accountTypeId, config) => {
     const mapping = config.accountTypeMapping || {
-        "AGP003": "RD" // Only active account type
-        // "AGP001": "SB",   // Inactive
-        // "AGP002": "RD",   // Inactive (alternate RD group)
-        // "AGP004": "FD",   // Inactive
-        // "AGP005": "Pigmy" // Inactive
+        "AGP003": "RD",
+        "AGP001": "SB",
+        "AGP002": "RD",
+        "AGP004": "FD",
+        "AGP005": "Pigmy",
+        "RD": "RD",
+        "Member": "Member"
     };
-    return mapping[accountTypeId?.toString()] || "Other";
+    return mapping[accountTypeId?.toString()] || accountTypeId?.toString() || "RD";
 };
 
 // Check if a member is a senior citizen based on date of birth

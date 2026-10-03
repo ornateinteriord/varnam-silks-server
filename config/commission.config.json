@@ -37,7 +37,13 @@
     },
 
     "eligibleAccountTypes": [
-        "AGP003"
+        "AGP003",
+        "AGP001",
+        "AGP002",
+        "AGP004",
+        "AGP005",
+        "RD",
+        "Member"
     ],
 
     "notes": [

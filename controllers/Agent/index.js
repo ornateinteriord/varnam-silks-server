@@ -204,19 +204,55 @@ const getAssignedAccounts = async (req, res) => {
 
         // Find all members introduced by this agent
         const introducedMembers = await MemberModel.find({ introducer: agentId }).sort({ date_of_joining: -1 });
-        
-        const memberProfiles = introducedMembers.map(member => ({
-            date_of_opening: member.date_of_joining || member.createdAt,
-            account_no: member.member_id,
-            account_holder: member.name,
-            date_of_maturity: null,
-            balance: 0,
-            status: member.status || "active",
-            account_id: member.member_id,
-            member_id: member.member_id,
-            account_type: "Member",
-            account_operation: "None"
-        }));
+
+        const memberProfiles = await Promise.all(
+            introducedMembers.map(async (member) => {
+                let openingAmount = 0;
+
+                // 1. Check AccountsModel
+                const mAccounts = await AccountsModel.find({ member_id: member.member_id });
+                if (mAccounts.length > 0) {
+                    openingAmount = mAccounts.reduce((sum, a) => sum + (a.account_amount || 0), 0);
+                }
+
+                // 2. Check TransactionModel for Account Opening transactions
+                if (openingAmount === 0) {
+                    const mTxs = await TransactionModel.find({
+                        member_id: member.member_id,
+                        transaction_type: 'Account Opening'
+                    });
+                    if (mTxs.length > 0) {
+                        openingAmount = mTxs.reduce((sum, t) => sum + (t.credit || t.amount || 0), 0);
+                    }
+                }
+
+                // 3. Check CommissionModel for transaction_amount
+                if (openingAmount === 0) {
+                    const mComm = await CommissionModel.findOne({ source_id: member.member_id });
+                    if (mComm && mComm.transaction_amount) {
+                        openingAmount = mComm.transaction_amount;
+                    }
+                }
+
+                // 4. Fallback to member amount if present
+                if (openingAmount === 0 && member.amount) {
+                    openingAmount = member.amount;
+                }
+
+                return {
+                    date_of_opening: member.date_of_joining || member.createdAt,
+                    account_no: member.member_id,
+                    account_holder: member.name,
+                    date_of_maturity: null,
+                    balance: openingAmount,
+                    status: member.status || "active",
+                    account_id: member.member_id,
+                    member_id: member.member_id,
+                    account_type: "Member",
+                    account_operation: "None"
+                };
+            })
+        );
 
         // Combine both accounts and member profiles
         const combinedData = [...accountsWithMemberDetails, ...memberProfiles];
