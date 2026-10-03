@@ -88,6 +88,10 @@ const commissionSchema = new mongoose.Schema(
             default: null,
         },
         // Additional Info
+        description: {
+            type: String,
+            default: null,
+        },
         notes: {
             type: String,
             default: null,

@@ -68,9 +68,9 @@ const agentSchema = mongoose.Schema(
       default: [],
       validate: {
         validator: function (v) {
-          return v.length <= 7;
+          return v.length <= 10;
         },
-        message: 'Introducer hierarchy cannot exceed 7 levels'
+        message: 'Introducer hierarchy cannot exceed 10 levels'
       }
     },
     entered_by: {
@@ -89,7 +89,7 @@ const agentSchema = mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
-      max: 7,
+      max: 9,
     },
     promoted_at: {
       type: Date,

@@ -264,9 +264,10 @@ const calculateCommissions = async (transaction) => {
             }
         }
 
-        const earnedLevels = directReferrerLevel + 1;
+        // Earned levels: Agent Level 0 = 1 level, Level 1 = 2 levels, ..., Level 8 = 9 levels, Level 9 = 9 levels (capped at 9)
+        const earnedLevels = Math.min(directReferrerLevel + 1, 9);
         console.log(`\n📊 Commission Distribution Plan (Agent Level: ${directReferrerLevel}, Earned Levels: ${earnedLevels}):`);
-        console.log(`   Levels 1–${Math.min(earnedLevels, 9)}: → ALL credited to ${directReferrerId} (their earned levels)`);
+        console.log(`   Levels 1–${earnedLevels}: → ALL credited to ${directReferrerId} (their earned levels)`);
         console.log(`   Levels ${earnedLevels + 1}–9: → ${directReferrerId}'s own sponsor chain (overflow)`);
         console.log(`   Level 10: → Company (${COMPANY_ID}) (Director Level)`);
 
@@ -333,6 +334,8 @@ const calculateCommissions = async (transaction) => {
             const label = level <= earnedLevels ? '(own earned level)' : '(sponsor overflow)';
             console.log(`   Level ${level}: ${beneficiaryId} ${label} → ₹${commissionAmount.toFixed(2)} (${commissionRate}%)`);
 
+            const descriptionText = level === 1 ? "Direct Income" : `Level ${level} Income`;
+
             commissions.push({
                 level,
                 beneficiary_id: beneficiaryId,
@@ -350,6 +353,7 @@ const calculateCommissions = async (transaction) => {
                 transaction_amount: transactionAmount,
                 commission_rate: commissionRate,
                 commission_amount: commissionAmount,
+                description: descriptionText,
             });
         }
 

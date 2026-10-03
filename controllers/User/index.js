@@ -96,7 +96,7 @@ const getCommissionTransactions = async (req, res) => {
             _id: c._id,
             transaction_id: c.transaction_id || c.commission_id,
             date: c.transaction_date || c.createdAt,
-            description: c.description || 'Commission Received',
+            description: c.description || (c.level === 1 ? 'Direct Income' : `Level ${c.level} Income`),
             amount: c.commission_amount,
             status: c.status,
             type: 'CREDIT',

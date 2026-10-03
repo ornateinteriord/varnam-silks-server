@@ -40,11 +40,19 @@ const getCommissionTransactions = async (req, res) => {
             .filter(c => c.status === "WITHDRAWN")
             .reduce((sum, c) => sum + c.commission_amount, 0);
 
+        const formattedTransactions = commissions.map(c => {
+            const doc = c.toObject ? c.toObject() : c;
+            if (!doc.description) {
+                doc.description = doc.level === 1 ? "Direct Income" : `Level ${doc.level} Income`;
+            }
+            return doc;
+        });
+
         res.status(200).json({
             success: true,
             message: "Commission transactions fetched successfully",
             data: {
-                transactions: commissions,
+                transactions: formattedTransactions,
                 summary: {
                     totalEarned,
                     totalPending,

@@ -97,9 +97,9 @@ const memberSchema = mongoose.Schema(
       default: [],
       validate: {
         validator: function (v) {
-          return v.length <= 7;
+          return v.length <= 10;
         },
-        message: 'Introducer hierarchy cannot exceed 7 levels'
+        message: 'Introducer hierarchy cannot exceed 10 levels'
       }
     },
     member_image: {
