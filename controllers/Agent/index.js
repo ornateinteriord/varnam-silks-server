@@ -40,11 +40,74 @@ const getCommissionTransactions = async (req, res) => {
             .filter(c => c.status === "WITHDRAWN")
             .reduce((sum, c) => sum + c.commission_amount, 0);
 
+        // Collect missing source_ids to query in bulk for performance
+        const missingSourceIds = [];
+        commissions.forEach(c => {
+            const doc = c.toObject ? c.toObject() : c;
+            const sId = doc.source_id || doc.member_id;
+            const sName = doc.source_name || doc.member_name;
+            if (sId && (!sName || sName.startsWith("Member-"))) {
+                missingSourceIds.push(sId);
+            }
+        });
+
+        let memberMap = {};
+        let agentMap = {};
+        if (missingSourceIds.length > 0) {
+            const members = await MemberModel.find({ member_id: { $in: missingSourceIds } }).select("member_id name").lean();
+            members.forEach(m => {
+                if (m.name) memberMap[m.member_id] = m.name;
+            });
+
+            const agents = await AgentModel.find({ agent_id: { $in: missingSourceIds } }).select("agent_id name").lean();
+            agents.forEach(a => {
+                if (a.name) agentMap[a.agent_id] = a.name;
+            });
+        }
+
         const formattedTransactions = commissions.map(c => {
             const doc = c.toObject ? c.toObject() : c;
-            if (!doc.description) {
-                doc.description = doc.level === 1 ? "Direct Income" : `Level ${doc.level} Income`;
+
+            const isWithdrawal = doc.status === "WITHDRAWN" || doc.account_type === "WITHDRAWAL";
+            let sourceId = doc.source_id || doc.member_id;
+            let sourceName = doc.source_name || doc.member_name;
+
+            if (isWithdrawal) {
+                sourceId = sourceId || doc.beneficiary_id || agentId;
+                sourceName = sourceName || doc.beneficiary_name || (agent ? agent.name : "");
+                doc.description = "Commission Withdrawal";
+                doc.commission_category = "Withdrawal";
+            } else {
+                if (sourceId && (!sourceName || sourceName.startsWith("Member-"))) {
+                    sourceName = memberMap[sourceId] || agentMap[sourceId] || sourceName || "";
+                }
+
+                // Determine whether it's Account Opening or Monthly Deposit
+                let category = "Monthly Comm";
+                if (doc.description && doc.description.includes("Acc Opening")) {
+                    category = "Acc Opening Comm";
+                } else if (doc.description && doc.description.includes("Monthly")) {
+                    category = "Monthly Comm";
+                } else {
+                    const level = Number(doc.level) || 1;
+                    const rate = Number(doc.commission_rate) || 0;
+                    if (level === 1) {
+                        category = rate >= 20 ? "Acc Opening Comm" : "Monthly Comm";
+                    } else if (level <= 6) {
+                        category = rate >= 5 ? "Acc Opening Comm" : "Monthly Comm";
+                    } else {
+                        category = rate >= 2 ? "Acc Opening Comm" : "Monthly Comm";
+                    }
+                }
+
+                const incomeLabel = (doc.level === 1 || doc.level === "1") ? "Direct Income" : `Level ${doc.level} Income`;
+                doc.description = `${incomeLabel} (${category})`;
+                doc.commission_category = category;
             }
+
+            doc.source_id = sourceId;
+            doc.source_name = sourceName;
+
             return doc;
         });
 

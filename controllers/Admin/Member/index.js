@@ -327,10 +327,15 @@ const updateMember = async (req, res) => {
                     );
                     console.log(`✅ Activated account ${account.account_no} with plan_amount: ${accountUpdate.plan_amount || account.plan_amount}`);
 
-                    // 2. Find and complete all pending transactions for this account
+                    // 2. Find and complete all pending transactions for this account (skip unpaid gateway orders)
                     const pendingTxs = await TransactionModel.find({
                         account_number: account.account_no,
-                        status: { $regex: /^pending$/i }
+                        status: { $regex: /^pending$/i },
+                        $or: [
+                            { payment_gateway: null },
+                            { payment_gateway: { $exists: false } },
+                            { payment_status: { $regex: /^(success|completed|paid)$/i } }
+                        ]
                     });
 
                     for (const tx of pendingTxs) {

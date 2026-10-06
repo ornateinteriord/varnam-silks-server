@@ -337,7 +337,9 @@ const calculateCommissions = async (transaction) => {
             const label = level <= earnedLevels ? '(own earned level)' : '(sponsor overflow)';
             console.log(`   Level ${level}: ${beneficiaryId} ${label} → ₹${commissionAmount.toFixed(2)} (${commissionRate}%)`);
 
-            const descriptionText = level === 1 ? "Direct Income" : `Level ${level} Income`;
+            const typeLabel = isAccountOpening ? "Acc Opening Comm" : "Monthly Comm";
+            const incomeLabel = level === 1 ? "Direct Income" : `Level ${level} Income`;
+            const descriptionText = `${incomeLabel} (${typeLabel})`;
 
             commissions.push({
                 level,
@@ -529,6 +531,29 @@ const processTransactionCommission = async (transaction) => {
         console.log(`💰 Amount: ₹${transaction.credit}`);
         console.log(`🏦 Account Type: ${transaction.account_type}`);
         console.log("-".repeat(60));
+
+        // ── Idempotency Check: Don't process the same transaction ID twice ──────
+        const existingCommission = await CommissionModel.findOne({
+            transaction_id: transaction.transaction_id
+        });
+        if (existingCommission) {
+            console.log(`⚠️ Commission already processed for transaction: ${transaction.transaction_id}. Skipping.`);
+            return {
+                success: true,
+                message: "Commission already processed for this transaction",
+                commissions: [],
+            };
+        }
+
+        // ── Payment Gateway Status Check: Don't process unpaid gateway transactions ──
+        if (transaction.payment_gateway && transaction.payment_status && !['success', 'completed', 'paid'].includes(transaction.payment_status.toLowerCase())) {
+            console.log(`⚠️ Transaction ${transaction.transaction_id} is an unpaid gateway transaction (${transaction.payment_status}). Skipping.`);
+            return {
+                success: false,
+                message: `Payment gateway transaction not completed (${transaction.payment_status})`,
+                commissions: [],
+            };
+        }
 
         // Calculate commissions
         const commissions = await calculateCommissions(transaction);
