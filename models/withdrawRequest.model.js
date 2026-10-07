@@ -40,15 +40,23 @@ const withdrawRequestSchema = mongoose.Schema(
         // Bank Details
         bank_account_number: {
             type: String,
-            required: true,
+            default: 'N/A',
         },
         ifsc_code: {
             type: String,
-            required: true,
+            default: 'N/A',
         },
         account_holder_name: {
             type: String,
-            required: true,
+            default: 'N/A',
+        },
+        bank_name: {
+            type: String,
+            default: 'N/A',
+        },
+        user_type: {
+            type: String,
+            default: 'MEMBER',
         },
         // Status
         status: {

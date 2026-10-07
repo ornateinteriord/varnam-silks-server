@@ -3,6 +3,7 @@ const MemberModel = require("../../models/member.model");
 const TransactionModel = require("../../models/transaction.model");
 const CommissionModel = require("../../models/commission.model");
 const AgentModel = require("../../models/agent.model");
+const WithdrawRequestModel = require("../../models/withdrawRequest.model");
 const generateTransactionId = require("../../utils/generateTransactionId");
 const { processTransactionCommission } = require("../../utils/commissionUtils");
 
@@ -22,30 +23,59 @@ const getCommissionTransactions = async (req, res) => {
         const agent = await AgentModel.findOne({ agent_id: agentId });
         const commissionBalance = agent ? (agent.commission_balance || 0) : 0;
 
-        // Find all commission transactions where this agent is the beneficiary
+        // 1. Find all commission transactions where this agent is the beneficiary
         const commissions = await CommissionModel.find({
             beneficiary_id: agentId
-        }).sort({ createdAt: -1 });
+        }).sort({ createdAt: -1 }).lean();
+
+        // 2. Find all withdrawal requests for this agent
+        const withdrawRequests = await WithdrawRequestModel.find({
+            member_id: agentId,
+            source_type: "Commission"
+        }).sort({ createdAt: -1 }).lean();
 
         // Calculate summary statistics
         const totalEarned = commissions
             .filter(c => c.status === "CREDITED")
-            .reduce((sum, c) => sum + c.commission_amount, 0);
+            .reduce((sum, c) => sum + (c.commission_amount || 0), 0);
 
-        const totalPending = commissions
+        const totalPendingCommissions = commissions
             .filter(c => c.status === "PENDING")
-            .reduce((sum, c) => sum + c.commission_amount, 0);
+            .reduce((sum, c) => sum + (c.commission_amount || 0), 0);
 
-        const totalWithdrawn = commissions
-            .filter(c => c.status === "WITHDRAWN")
-            .reduce((sum, c) => sum + c.commission_amount, 0);
+        // Completed withdrawals from withdrawRequest_tbl
+        const totalCompletedWithdrawals = withdrawRequests
+            .filter(w => w.status === "Completed" || w.status === "Approved")
+            .reduce((sum, w) => sum + (w.amount || 0), 0);
+
+        // Track transaction IDs from withdrawal requests to avoid duplicates
+        const withdrawTxIds = new Set(
+            withdrawRequests
+                .map(w => w.transaction_id || w.withdraw_request_id)
+                .filter(Boolean)
+        );
+
+        // Any standalone CommissionModel WITHDRAWN records that aren't in withdrawRequests
+        const standaloneWithdrawn = commissions
+            .filter(c => (c.status === "WITHDRAWN" || c.account_type === "WITHDRAWAL") && !withdrawTxIds.has(c.transaction_id))
+            .reduce((sum, c) => sum + (c.commission_amount || 0), 0);
+
+        const totalWithdrawn = totalCompletedWithdrawals + standaloneWithdrawn;
+
+        // Pending withdrawals
+        const totalPendingWithdrawals = withdrawRequests
+            .filter(w => w.status === "Pending")
+            .reduce((sum, w) => sum + (w.amount || 0), 0);
+
+        // Available balance: subtract both completed and pending withdrawals
+        const calculatedBalance = Math.max(0, totalEarned - totalWithdrawn - totalPendingWithdrawals);
+        const availableBalance = calculatedBalance;
 
         // Collect missing source_ids to query in bulk for performance
         const missingSourceIds = [];
         commissions.forEach(c => {
-            const doc = c.toObject ? c.toObject() : c;
-            const sId = doc.source_id || doc.member_id;
-            const sName = doc.source_name || doc.member_name;
+            const sId = c.source_id || c.member_id;
+            const sName = c.source_name || c.member_name;
             if (sId && (!sName || sName.startsWith("Member-"))) {
                 missingSourceIds.push(sId);
             }
@@ -65,62 +95,110 @@ const getCommissionTransactions = async (req, res) => {
             });
         }
 
-        const formattedTransactions = commissions.map(c => {
-            const doc = c.toObject ? c.toObject() : c;
-
-            const isWithdrawal = doc.status === "WITHDRAWN" || doc.account_type === "WITHDRAWAL";
-            let sourceId = doc.source_id || doc.member_id;
-            let sourceName = doc.source_name || doc.member_name;
-
-            if (isWithdrawal) {
-                sourceId = sourceId || doc.beneficiary_id || agentId;
-                sourceName = sourceName || doc.beneficiary_name || (agent ? agent.name : "");
-                doc.description = "Commission Withdrawal";
-                doc.commission_category = "Withdrawal";
-            } else {
-                if (sourceId && (!sourceName || sourceName.startsWith("Member-"))) {
-                    sourceName = memberMap[sourceId] || agentMap[sourceId] || sourceName || "";
+        // Format commission earning records
+        const commissionDocs = commissions
+            .filter(c => {
+                const isWithdrawal = c.status === "WITHDRAWN" || c.account_type === "WITHDRAWAL";
+                // If it is already represented in withdrawRequests, skip to avoid duplicate
+                if (isWithdrawal && withdrawTxIds.has(c.transaction_id)) {
+                    return false;
                 }
+                return true;
+            })
+            .map(c => {
+                const doc = { ...c };
+                const isWithdrawal = doc.status === "WITHDRAWN" || doc.account_type === "WITHDRAWAL";
+                let sourceId = doc.source_id || doc.member_id;
+                let sourceName = doc.source_name || doc.member_name;
 
-                // Determine whether it's Account Opening or Monthly Deposit
-                let category = "Monthly Comm";
-                if (doc.description && doc.description.includes("Acc Opening")) {
-                    category = "Acc Opening Comm";
-                } else if (doc.description && doc.description.includes("Monthly")) {
-                    category = "Monthly Comm";
+                if (isWithdrawal) {
+                    sourceId = sourceId || doc.beneficiary_id || agentId;
+                    sourceName = sourceName || doc.beneficiary_name || (agent ? agent.name : "");
+                    doc.description = "Commission Withdrawal";
+                    doc.incomeLabel = "Commission Withdrawal";
+                    doc.commission_category = "Withdrawal";
+                    doc.isCredit = false;
+                    doc.type = "commission_withdrawal";
                 } else {
-                    const level = Number(doc.level) || 1;
-                    const rate = Number(doc.commission_rate) || 0;
-                    if (level === 1) {
-                        category = rate >= 20 ? "Acc Opening Comm" : "Monthly Comm";
-                    } else if (level <= 6) {
-                        category = rate >= 5 ? "Acc Opening Comm" : "Monthly Comm";
-                    } else {
-                        category = rate >= 2 ? "Acc Opening Comm" : "Monthly Comm";
+                    if (sourceId && (!sourceName || sourceName.startsWith("Member-"))) {
+                        sourceName = memberMap[sourceId] || agentMap[sourceId] || sourceName || "";
                     }
+
+                    // Determine whether it's Account Opening or Monthly Deposit
+                    let category = "Monthly Comm";
+                    if (doc.description && doc.description.includes("Acc Opening")) {
+                        category = "Acc Opening Comm";
+                    } else if (doc.description && doc.description.includes("Monthly")) {
+                        category = "Monthly Comm";
+                    } else {
+                        const level = Number(doc.level) || 1;
+                        const rate = Number(doc.commission_rate) || 0;
+                        if (level === 1) {
+                            category = rate >= 20 ? "Acc Opening Comm" : "Monthly Comm";
+                        } else if (level <= 6) {
+                            category = rate >= 5 ? "Acc Opening Comm" : "Monthly Comm";
+                        } else {
+                            category = rate >= 2 ? "Acc Opening Comm" : "Monthly Comm";
+                        }
+                    }
+
+                    const incomeLabel = (doc.level === 1 || doc.level === "1") ? "Direct Income" : `Level ${doc.level} Income`;
+                    doc.description = `${incomeLabel} (${category})`;
+                    doc.incomeLabel = incomeLabel;
+                    doc.commission_category = category;
+                    doc.isCredit = true;
+                    doc.type = "commission_received";
                 }
 
-                const incomeLabel = (doc.level === 1 || doc.level === "1") ? "Direct Income" : `Level ${doc.level} Income`;
-                doc.description = `${incomeLabel} (${category})`;
-                doc.commission_category = category;
-            }
+                doc.source_id = sourceId;
+                doc.source_name = sourceName;
+                doc.amount = doc.commission_amount;
 
-            doc.source_id = sourceId;
-            doc.source_name = sourceName;
+                return doc;
+            });
 
-            return doc;
+        // Format withdrawal request records from WithdrawRequestModel
+        const withdrawalDocs = withdrawRequests.map(w => ({
+            _id: w._id,
+            withdraw_request_id: w.withdraw_request_id,
+            transaction_id: w.transaction_id || w.withdraw_request_id,
+            beneficiary_id: agentId,
+            beneficiary_name: agent ? agent.name : "",
+            source_id: agentId,
+            source_name: agent ? agent.name : "",
+            commission_amount: w.amount,
+            amount: w.amount,
+            account_type: "WITHDRAWAL",
+            commission_category: "Withdrawal",
+            description: `Commission Withdrawal Request${w.status === 'Rejected' ? ' (Rejected)' : ''}`,
+            incomeLabel: "Commission Withdrawal",
+            status: w.status === 'Completed' ? 'Completed' : (w.status === 'Pending' ? 'Pending' : w.status),
+            type: "commission_withdrawal",
+            isCredit: false,
+            createdAt: w.requested_date || w.createdAt,
+            transaction_date: w.requested_date || w.createdAt,
+            rejection_reason: w.rejection_reason,
+            bank_account_number: w.bank_account_number,
+            ifsc_code: w.ifsc_code
+        }));
+
+        // Combine and sort by newest first
+        const allTransactions = [...commissionDocs, ...withdrawalDocs].sort((a, b) => {
+            const dateA = new Date(a.createdAt || a.transaction_date || a.date || 0);
+            const dateB = new Date(b.createdAt || b.transaction_date || b.date || 0);
+            return dateB - dateA;
         });
 
         res.status(200).json({
             success: true,
             message: "Commission transactions fetched successfully",
             data: {
-                transactions: formattedTransactions,
+                transactions: allTransactions,
                 summary: {
                     totalEarned,
-                    totalPending,
+                    totalPending: totalPendingCommissions + totalPendingWithdrawals,
                     totalWithdrawn,
-                    availableBalance: totalEarned - totalWithdrawn // Calculate from transactions
+                    availableBalance
                 }
             }
         });

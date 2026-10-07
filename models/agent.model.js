@@ -95,8 +95,25 @@ const agentSchema = mongoose.Schema(
       type: Date,
       default: null,
     },
+    // Bank Details
+    account_number: {
+      type: String,
+      default: null,
+    },
+    ifsc_code: {
+      type: String,
+      default: null,
+    },
+    bank_name: {
+      type: String,
+      default: null,
+    },
+    account_holder_name: {
+      type: String,
+      default: null,
+    },
   },
-  { timestamps: true, collection: "agent_tbl" }
+  { timestamps: true, collection: "agent_tbl", strict: false }
 );
 
 const AgentModel = mongoose.model("agent_tbl", agentSchema);
