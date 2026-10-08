@@ -158,29 +158,38 @@ const getCommissionTransactions = async (req, res) => {
             });
 
         // Format withdrawal request records from WithdrawRequestModel
-        const withdrawalDocs = withdrawRequests.map(w => ({
-            _id: w._id,
-            withdraw_request_id: w.withdraw_request_id,
-            transaction_id: w.transaction_id || w.withdraw_request_id,
-            beneficiary_id: agentId,
-            beneficiary_name: agent ? agent.name : "",
-            source_id: agentId,
-            source_name: agent ? agent.name : "",
-            commission_amount: w.amount,
-            amount: w.amount,
-            account_type: "WITHDRAWAL",
-            commission_category: "Withdrawal",
-            description: `Commission Withdrawal Request${w.status === 'Rejected' ? ' (Rejected)' : ''}`,
-            incomeLabel: "Commission Withdrawal",
-            status: w.status === 'Completed' ? 'Completed' : (w.status === 'Pending' ? 'Pending' : w.status),
-            type: "commission_withdrawal",
-            isCredit: false,
-            createdAt: w.requested_date || w.createdAt,
-            transaction_date: w.requested_date || w.createdAt,
-            rejection_reason: w.rejection_reason,
-            bank_account_number: w.bank_account_number,
-            ifsc_code: w.ifsc_code
-        }));
+        const withdrawalDocs = withdrawRequests.map(w => {
+            const deductionRate = (w.deduction_rate !== undefined && w.deduction_rate !== null) ? w.deduction_rate : 10;
+            const deductionAmount = (w.deduction_amount !== undefined && w.deduction_amount !== null) ? w.deduction_amount : Math.round(((w.amount || 0) * 0.10) * 100) / 100;
+            const netAmount = (w.net_amount !== undefined && w.net_amount !== null && w.net_amount > 0) ? w.net_amount : Math.round(((w.amount || 0) - deductionAmount) * 100) / 100;
+
+            return {
+                _id: w._id,
+                withdraw_request_id: w.withdraw_request_id,
+                transaction_id: w.transaction_id || w.withdraw_request_id,
+                beneficiary_id: agentId,
+                beneficiary_name: agent ? agent.name : "",
+                source_id: agentId,
+                source_name: agent ? agent.name : "",
+                commission_amount: w.amount,
+                amount: w.amount,
+                deduction_rate: deductionRate,
+                deduction_amount: deductionAmount,
+                net_amount: netAmount,
+                account_type: "WITHDRAWAL",
+                commission_category: "Withdrawal",
+                description: `Commission Withdrawal${deductionAmount > 0 ? ` (10% Ded: ₹${deductionAmount.toFixed(2)}, Net: ₹${netAmount.toFixed(2)})` : ''}${w.status === 'Rejected' ? ' (Rejected)' : ''}`,
+                incomeLabel: "Commission Withdrawal",
+                status: w.status === 'Completed' ? 'Completed' : (w.status === 'Pending' ? 'Pending' : w.status),
+                type: "commission_withdrawal",
+                isCredit: false,
+                createdAt: w.requested_date || w.createdAt,
+                transaction_date: w.requested_date || w.createdAt,
+                rejection_reason: w.rejection_reason,
+                bank_account_number: w.bank_account_number,
+                ifsc_code: w.ifsc_code
+            };
+        });
 
         // Combine and sort by newest first
         const allTransactions = [...commissionDocs, ...withdrawalDocs].sort((a, b) => {
@@ -343,8 +352,12 @@ const getAssignedAccounts = async (req, res) => {
             })
         );
 
-        // Find all members introduced by this agent
-        const introducedMembers = await MemberModel.find({ introducer: agentId }).sort({ date_of_joining: -1 });
+        // Find all members introduced by this agent who do NOT already have an account assigned above
+        const existingMemberIds = new Set(accounts.map(a => a.member_id).filter(Boolean));
+        const introducedMembers = await MemberModel.find({
+            introducer: agentId,
+            member_id: { $nin: Array.from(existingMemberIds) }
+        }).sort({ date_of_joining: -1 });
 
         const memberProfiles = await Promise.all(
             introducedMembers.map(async (member) => {
@@ -389,7 +402,7 @@ const getAssignedAccounts = async (req, res) => {
                     status: member.status || "active",
                     account_id: member.member_id,
                     member_id: member.member_id,
-                    account_type: "Member",
+                    account_type: "AGP003",
                     account_operation: "None"
                 };
             })

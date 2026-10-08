@@ -386,6 +386,17 @@ const distributeCommissions = async (commissions) => {
 
     for (const commission of commissions) {
         try {
+            // Check if exact commission already exists for this transaction, beneficiary, and level
+            const existingComm = await CommissionModel.findOne({
+                transaction_id: commission.transaction_id,
+                beneficiary_id: commission.beneficiary_id,
+                level: commission.level
+            });
+            if (existingComm) {
+                console.log(`⚠️ Commission already exists for tx ${commission.transaction_id}, level ${commission.level}, beneficiary ${commission.beneficiary_id}. Skipping.`);
+                continue;
+            }
+
             // Generate commission ID
             const commissionId = await generateCommissionId();
 

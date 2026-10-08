@@ -37,6 +37,19 @@ const withdrawRequestSchema = mongoose.Schema(
             type: Number,
             required: true,
         },
+        // Deduction details (e.g., 10% for Agent withdrawals)
+        deduction_rate: {
+            type: Number,
+            default: 0,
+        },
+        deduction_amount: {
+            type: Number,
+            default: 0,
+        },
+        net_amount: {
+            type: Number,
+            default: 0,
+        },
         // Bank Details
         bank_account_number: {
             type: String,

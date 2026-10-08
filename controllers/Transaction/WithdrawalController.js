@@ -62,7 +62,7 @@ const calculateAvailableBalance = async (userId) => {
 // User / Agent: Request Commission Withdrawal
 exports.withdrawCommission = async (req, res) => {
     try {
-        const { member_id, agent_id, amount, bank_account_number, ifsc_code, account_holder_name, bank_name } = req.body;
+        const { member_id, agent_id, amount, bank_account_number, ifsc_code, account_holder_name, bank_name, is_agent } = req.body;
         const targetId = member_id || agent_id;
 
         if (!targetId || !amount || parseFloat(amount) <= 0) {
@@ -76,10 +76,25 @@ exports.withdrawCommission = async (req, res) => {
             userDoc = await AgentModel.findOne({ agent_id: targetId }).lean();
             if (userDoc) userType = "AGENT";
         }
+        if (String(targetId).startsWith("AG") || is_agent) {
+            userType = "AGENT";
+        }
+
+        const reqAmount = parseFloat(amount);
+        let deductionRate = 0;
+        let deductionAmount = 0;
+        let netAmount = reqAmount;
+
+        // 10% deduction logic for Agent commission withdrawal
+        if (userType === "AGENT") {
+            deductionRate = 10;
+            deductionAmount = Math.round((reqAmount * 0.10) * 100) / 100;
+            netAmount = Math.round((reqAmount - deductionAmount) * 100) / 100;
+        }
 
         const availableBalance = await calculateAvailableBalance(targetId);
 
-        if (availableBalance < parseFloat(amount)) {
+        if (availableBalance < reqAmount) {
             return res.status(400).json({
                 success: false,
                 message: `Insufficient commission balance. Available: ₹${availableBalance.toFixed(2)}`
@@ -91,7 +106,10 @@ exports.withdrawCommission = async (req, res) => {
             withdraw_request_id: `WREQ${Date.now()}`,
             member_id: targetId,
             source_type: 'Commission',
-            amount: parseFloat(amount),
+            amount: reqAmount,
+            deduction_rate: deductionRate,
+            deduction_amount: deductionAmount,
+            net_amount: netAmount,
             bank_account_number: bank_account_number || userDoc?.account_number || 'N/A',
             ifsc_code: ifsc_code || userDoc?.ifsc_code || 'N/A',
             account_holder_name: account_holder_name || userDoc?.account_holder_name || userDoc?.name || (userType === 'AGENT' ? 'Agent' : 'Member'),
@@ -104,7 +122,9 @@ exports.withdrawCommission = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: "Withdrawal request submitted successfully to admin",
+            message: userType === 'AGENT'
+                ? `Withdrawal request for ₹${reqAmount.toFixed(2)} (10% deduction: ₹${deductionAmount.toFixed(2)}, Net payable: ₹${netAmount.toFixed(2)}) submitted successfully`
+                : "Withdrawal request submitted successfully to admin",
             data: newRequest
         });
 
@@ -134,12 +154,29 @@ exports.getWithdrawalRequests = async (req, res) => {
                     user = await AgentModel.findOne({ agent_id: request.member_id }).lean();
                     if (user) userType = "AGENT";
                 }
+                if (String(request.member_id || '').startsWith('AG')) {
+                    userType = "AGENT";
+                }
 
                 const currentBalance = await calculateAvailableBalance(request.member_id);
+
+                const isAgent = userType === "AGENT";
+                const deductionRate = (request.deduction_rate !== undefined && request.deduction_rate !== null)
+                    ? request.deduction_rate
+                    : (isAgent ? 10 : 0);
+                const deductionAmount = (request.deduction_amount !== undefined && request.deduction_amount !== null)
+                    ? request.deduction_amount
+                    : Math.round(((request.amount || 0) * (deductionRate / 100)) * 100) / 100;
+                const netAmount = (request.net_amount !== undefined && request.net_amount !== null && request.net_amount > 0)
+                    ? request.net_amount
+                    : Math.round(((request.amount || 0) - deductionAmount) * 100) / 100;
 
                 return {
                     ...request,
                     user_type: userType,
+                    deduction_rate: deductionRate,
+                    deduction_amount: deductionAmount,
+                    net_amount: netAmount,
                     balance: currentBalance,
                     member_details: {
                         name: user ? user.name : (request.account_holder_name || 'N/A'),
@@ -198,6 +235,20 @@ exports.approveWithdrawal = async (req, res) => {
                 user = await AgentModel.findOne({ agent_id: request.member_id }).session(session);
                 if (user) userType = "AGENT";
             }
+            if (String(request.member_id || '').startsWith('AG')) {
+                userType = "AGENT";
+            }
+
+            const isAgent = userType === "AGENT";
+            const deductionRate = (request.deduction_rate !== undefined && request.deduction_rate !== null)
+                ? request.deduction_rate
+                : (isAgent ? 10 : 0);
+            const deductionAmount = (request.deduction_amount !== undefined && request.deduction_amount !== null)
+                ? request.deduction_amount
+                : Math.round(((request.amount || 0) * (deductionRate / 100)) * 100) / 100;
+            const netAmount = (request.net_amount !== undefined && request.net_amount !== null && request.net_amount > 0)
+                ? request.net_amount
+                : Math.round(((request.amount || 0) - deductionAmount) * 100) / 100;
 
             // If it's an Agent, deduct commission_balance in AgentModel as well
             if (userType === "AGENT" && user) {
@@ -206,6 +257,10 @@ exports.approveWithdrawal = async (req, res) => {
             }
 
             if (request.source_type === 'Commission') {
+                const noteText = isAgent
+                    ? `${remarks ? remarks + " | " : ""}Commission withdrawal approved (Gross: ₹${request.amount}, 10% Deduction: ₹${deductionAmount}, Net Paid: ₹${netAmount})`
+                    : (remarks || "Commission withdrawal approved by admin");
+
                 // 1. Create WITHDRAWN record in CommissionModel
                 const newCommission = new CommissionModel({
                     commission_id: `COMM-WD-${Date.now()}`,
@@ -224,7 +279,7 @@ exports.approveWithdrawal = async (req, res) => {
                     level: 0,
                     status: "WITHDRAWN",
                     credited_at: new Date(),
-                    notes: remarks || "Commission withdrawal approved by admin"
+                    notes: noteText
                 });
                 await newCommission.save({ session });
 
@@ -236,7 +291,9 @@ exports.approveWithdrawal = async (req, res) => {
                     account_number: request.bank_account_number || (user && user.account_number) || 'N/A',
                     account_type: 'Commission',
                     transaction_type: 'Withdrawal',
-                    description: `Commission Withdrawal Approved`,
+                    description: isAgent
+                        ? `Commission Withdrawal Approved (10% Deduction: ₹${deductionAmount}, Net Paid: ₹${netAmount})`
+                        : `Commission Withdrawal Approved`,
                     credit: 0,
                     debit: request.amount,
                     ew_debit: "0",
@@ -253,6 +310,9 @@ exports.approveWithdrawal = async (req, res) => {
 
             request.status = 'Completed';
             request.transaction_id = transaction_id;
+            request.deduction_rate = deductionRate;
+            request.deduction_amount = deductionAmount;
+            request.net_amount = netAmount;
             request.processed_date = new Date();
             await request.save({ session });
         }
