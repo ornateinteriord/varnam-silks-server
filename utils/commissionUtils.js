@@ -215,7 +215,7 @@ const calculateCommissions = async (transaction) => {
 
         // ─── Determine the DIRECT REFERRER (Level 1 agent) and their promote level ───
         const directReferrerId = hierarchy[0]; // Level 1 is always the direct referrer
-        let directReferrerLevel = 10; // default: full 10 levels if not found or not an agent
+        let directReferrerLevel = 0; // default: Level 0 if not found or not an agent
 
         if (directReferrerId) {
             const directReferrer = await AgentModel.findOne({ agent_id: directReferrerId });
@@ -223,13 +223,13 @@ const calculateCommissions = async (transaction) => {
                 directReferrerLevel = directReferrer.level;
                 console.log(`\n🏅 Direct Referrer: ${directReferrerId} | Promote Level: ${directReferrerLevel}`);
             } else {
-                console.log(`\n🏅 Direct Referrer: ${directReferrerId} | Level: not an agent or not set, defaulting to 7`);
+                console.log(`\n🏅 Direct Referrer: ${directReferrerId} | Level: not an agent or not set, defaulting to 0`);
             }
         }
 
-        // If directReferrerLevel is 0, no levels go to the normal chain — all to sponsor
-        // Levels 1..agentLevel  → normal upline chain (hierarchy[0..agentLevel-1])
-        // Levels agentLevel+1..9 → direct referrer's OWN sponsor chain
+        // If directReferrerLevel is 0, only Level 1 is earned
+        // Levels 1..earnedLevels → direct referrer (their earned levels)
+        // Levels earnedLevels+1..9 → direct referrer's OWN sponsor chain
         // Level 10 → company always
 
         const accountTypeName = getAccountTypeName(transaction.account_type, config);
@@ -247,11 +247,6 @@ const calculateCommissions = async (transaction) => {
         //
         // Monthly deposit rates — applied on each monthly installment payment:
         const monthlyDepositRates  = { 1: 5, 2: 1, 3: 1, 4: 0.75, 5: 0.75, 6: 0.5, 7: 0.25, 8: 0.25, 9: 0.25, 10: 0.25 };
-        //
-        // Inactive rate tables (enable if account types are activated in future):
-        // const fdOpeningRates    = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5, 8: 5, 9: 5, 10: 5 };
-        // const pigmyOpeningRates = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5, 8: 5, 9: 5, 10: 5 };
-        // const sbOpeningRates    = { 1: 30, 2: 10, 3: 10, 4: 10, 5: 10, 6: 10, 7: 5, 8: 5, 9: 5, 10: 5 };
         // ────────────────────────────────────────────────────────────────────────
 
         const COMPANY_ID = "VS000001";
@@ -267,8 +262,8 @@ const calculateCommissions = async (transaction) => {
             }
         }
 
-        // Earned levels: Agent Level 0 = 1 level, Level 1 = 2 levels, ..., Level 8 = 9 levels, Level 9 = 9 levels (capped at 9)
-        const earnedLevels = Math.min(directReferrerLevel + 1, 9);
+        // Earned levels: Agent Level 0 = 1 level, Level 1 = 1 level, Level 2 = 2 levels, ..., Level 9 = 9 levels (capped at 9)
+        const earnedLevels = Math.min(Math.max(1, directReferrerLevel), 9);
         console.log(`\n📊 Commission Distribution Plan (Agent Level: ${directReferrerLevel}, Earned Levels: ${earnedLevels}):`);
         console.log(`   Levels 1–${earnedLevels}: → ALL credited to ${directReferrerId} (their earned levels)`);
         console.log(`   Levels ${earnedLevels + 1}–9: → ${directReferrerId}'s own sponsor chain (overflow)`);
