@@ -262,8 +262,8 @@ const calculateCommissions = async (transaction) => {
             }
         }
 
-        // Earned levels: Agent Level 0 = 1 level, Level 1 = 1 level, Level 2 = 2 levels, ..., Level 9 = 9 levels (capped at 9)
-        const earnedLevels = Math.min(Math.max(1, directReferrerLevel), 9);
+        // Earned levels: Agent Level 0 = 1 level, Level 1 = 2 levels, ..., Level 8 = 9 levels, Level 9 = 9 levels (capped at 9)
+        const earnedLevels = Math.min(directReferrerLevel + 1, 9);
         console.log(`\n📊 Commission Distribution Plan (Agent Level: ${directReferrerLevel}, Earned Levels: ${earnedLevels}):`);
         console.log(`   Levels 1–${earnedLevels}: → ALL credited to ${directReferrerId} (their earned levels)`);
         console.log(`   Levels ${earnedLevels + 1}–9: → ${directReferrerId}'s own sponsor chain (overflow)`);

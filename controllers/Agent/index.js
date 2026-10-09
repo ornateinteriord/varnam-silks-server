@@ -67,9 +67,15 @@ const getCommissionTransactions = async (req, res) => {
             .filter(w => w.status === "Pending")
             .reduce((sum, w) => sum + (w.amount || 0), 0);
 
-        // Available balance: subtract both completed and pending withdrawals
-        const calculatedBalance = Math.max(0, totalEarned - totalWithdrawn - totalPendingWithdrawals);
-        const availableBalance = calculatedBalance;
+        // Available balance: dynamically calculated from active credited transactions minus withdrawals
+        const availableBalance = Math.max(0, totalEarned - totalWithdrawn - totalPendingWithdrawals);
+
+        // Keep agent.commission_balance in agent_tbl in sync automatically
+        if (agent && agent.commission_balance !== availableBalance) {
+            AgentModel.updateOne({ agent_id: agentId }, { $set: { commission_balance: availableBalance } }).catch(err => {
+                console.error("Error syncing agent commission balance:", err);
+            });
+        }
 
         // Collect missing source_ids to query in bulk for performance
         const missingSourceIds = [];
