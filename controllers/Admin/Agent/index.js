@@ -2,6 +2,7 @@ const AgentModel = require("../../../models/agent.model");
 const UserModel = require("../../../models/user.model");
 const { sendMail } = require("../../../utils/EmailService");
 const { generateWelcomeEmail } = require("../../../utils/emailTemplates");
+const { addAgentHierarchy } = require("../../../utils/hierarchyHelper");
 
 // Create a new agent
 const createAgent = async (req, res) => {
@@ -18,8 +19,10 @@ const createAgent = async (req, res) => {
             pan_no,
             aadharcard_no,
             introducer,
+            introducer_name,
             entered_by,
             designation,
+            level,
             status
         } = req.body;
 
@@ -40,9 +43,7 @@ const createAgent = async (req, res) => {
             }
         }
 
-
-        // Create new agent with auto-generated agent_id
-        const newAgent = await AgentModel.create({
+        const agentPayload = {
             agent_id: newAgentId,
             branch_id,
             date_of_joining,
@@ -55,10 +56,18 @@ const createAgent = async (req, res) => {
             pan_no,
             aadharcard_no,
             introducer,
+            introducer_name: introducer_name || "",
             entered_by,
             designation,
+            level: level !== undefined ? level : 0,
             status: status || "active"
-        });
+        };
+
+        // Automatically build introducer hierarchy and introducer name
+        await addAgentHierarchy(agentPayload);
+
+        // Create new agent with auto-generated agent_id
+        const newAgent = await AgentModel.create(agentPayload);
 
         // Create user entry automatically
         try {
@@ -186,6 +195,11 @@ const updateAgent = async (req, res) => {
             });
         }
 
+
+        // Update hierarchy if introducer is specified or changed
+        if (updateData.introducer) {
+            await addAgentHierarchy(updateData);
+        }
 
         // Update the agent
         const updatedAgent = await AgentModel.findOneAndUpdate(

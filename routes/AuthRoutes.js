@@ -18,18 +18,15 @@ router.post("/signup", signup);
 // Get introducer/sponsor details by ID (for registration referral)
 router.get("/get-sponsor/:ref", async (req, res) => {
     try {
-        const { ref } = req.params;
+        const cleanRef = String(ref).trim();
 
         // Search for member/agent by their ID (who will be the introducer)
-        // Try both string and numeric formats
         const member = await MemberModel.findOne({
             $or: [
-                { member_id: ref },
-                { Member_id: ref },
-                { member_id: String(ref) },
-                { Member_id: String(ref) },
-                { member_id: parseInt(ref) || ref },
-                { Member_id: parseInt(ref) || ref }
+                { member_id: cleanRef },
+                { Member_id: cleanRef },
+                { member_id: { $regex: new RegExp(`^${cleanRef}$`, "i") } },
+                { Member_id: { $regex: new RegExp(`^${cleanRef}$`, "i") } }
             ]
         }).lean();
 
@@ -47,9 +44,10 @@ router.get("/get-sponsor/:ref", async (req, res) => {
         // Try agent
         const agent = await AgentModel.findOne({
             $or: [
-                { agent_id: ref },
-                { agent_id: String(ref) },
-                { agent_id: parseInt(ref) || ref }
+                { agent_id: cleanRef },
+                { Agent_id: cleanRef },
+                { agent_id: { $regex: new RegExp(`^${cleanRef}$`, "i") } },
+                { Agent_id: { $regex: new RegExp(`^${cleanRef}$`, "i") } }
             ]
         }).lean();
 
