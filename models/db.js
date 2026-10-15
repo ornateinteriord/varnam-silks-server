@@ -36,6 +36,19 @@ const connectDB = async () => {
     cachedConnection = connection;
     console.log("✅ MongoDB Connected Successfully");
 
+    // Automatically drop legacy unique index on contactno if present
+    try {
+      const memberCol = mongoose.connection.db.collection('member_tbl');
+      const indexes = await memberCol.indexes();
+      const contactIndex = indexes.find(idx => idx.name === 'contactno_1');
+      if (contactIndex && contactIndex.unique) {
+        await memberCol.dropIndex('contactno_1');
+        console.log("ℹ️ Dropped legacy unique index 'contactno_1' from member_tbl to allow duplicate phone numbers");
+      }
+    } catch (idxErr) {
+      // Ignore if collection doesn't exist or index already dropped
+    }
+
     // Connection event listeners
     mongoose.connection.on('disconnected', () => {
       console.log('⚠️  MongoDB disconnected');

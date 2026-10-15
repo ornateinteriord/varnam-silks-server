@@ -287,6 +287,19 @@ const updateMember = async (req, res) => {
         }
 
 
+        // Normalize frontend keys to database keys
+        if (updateData.Name && !updateData.name) updateData.name = updateData.Name;
+        if (updateData.Father_name && !updateData.father_name) updateData.father_name = updateData.Father_name;
+        if (updateData.email && !updateData.emailid) updateData.emailid = updateData.email;
+        if (updateData.mobileno && !updateData.contactno) updateData.contactno = updateData.mobileno;
+        if (updateData.Pan_no && !updateData.pan_no) updateData.pan_no = updateData.Pan_no;
+        if (updateData.accountNo && !updateData.account_number) updateData.account_number = updateData.accountNo;
+        if (updateData.ifsc && !updateData.ifsc_code) updateData.ifsc_code = updateData.ifsc;
+        if (updateData.Nominee_name && !updateData.nominee) updateData.nominee = updateData.Nominee_name;
+        if (updateData.Nominee_Relation && !updateData.relation) updateData.relation = updateData.Nominee_Relation;
+        if (updateData.Sponsor_code && !updateData.introducer) updateData.introducer = updateData.Sponsor_code;
+        if (updateData.Sponsor_name && !updateData.introducer_name) updateData.introducer_name = updateData.Sponsor_name;
+
         // Check if member is being activated
         const wasPending = !member.status || member.status.toLowerCase() === 'pending';
         const isBecomingActive = updateData.status && updateData.status.toLowerCase() === 'active';
@@ -508,10 +521,36 @@ const getMemberById = async (req, res) => {
             });
         }
 
+        if (member) {
+            member.Name = member.Name || member.name || "";
+            member.name = member.name || member.Name || "";
+            member.Father_name = member.Father_name || member.father_name || "";
+            member.father_name = member.father_name || member.Father_name || "";
+            member.email = member.email || member.emailid || "";
+            member.emailid = member.emailid || member.email || "";
+            member.mobileno = member.mobileno || member.contactno || "";
+            member.contactno = member.contactno || member.mobileno || "";
+            member.Pan_no = member.Pan_no || member.pan_no || "";
+            member.pan_no = member.pan_no || member.Pan_no || "";
+            member.accountNo = member.accountNo || member.account_number || "";
+            member.account_number = member.account_number || member.accountNo || "";
+            member.ifsc = member.ifsc || member.ifsc_code || "";
+            member.ifsc_code = member.ifsc_code || member.ifsc || "";
+            member.Nominee_name = member.Nominee_name || member.nominee || "";
+            member.nominee = member.nominee || member.Nominee_name || "";
+            member.Nominee_Relation = member.Nominee_Relation || member.relation || "";
+            member.relation = member.relation || member.Nominee_Relation || "";
+            member.Sponsor_code = member.Sponsor_code || member.introducer || "";
+            member.introducer = member.introducer || member.Sponsor_code || "";
+            member.Sponsor_name = member.Sponsor_name || member.introducer_name || "";
+            member.introducer_name = member.introducer_name || member.Sponsor_name || "";
+        }
+
         res.status(200).json({
             success: true,
             message: "Member fetched successfully",
-            data: member
+            data: member,
+            member: member
         });
     } catch (error) {
         console.error('[ERROR] Failed to fetch member:', error);
